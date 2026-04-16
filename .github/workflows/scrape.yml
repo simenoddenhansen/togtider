@@ -2,7 +2,7 @@ name: Hourly Entur Scraper
 
 on:
   schedule:
-    - cron: '45 * * * *'  # Kjører hver hver time i det 45. minuttet
+    - cron: "*/5 * * *"  # Kjører hvert 5. minutt
   workflow_dispatch:      #For å kunne kjøre den manuelt
 
 jobs:
