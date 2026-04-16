@@ -11,8 +11,11 @@ st.set_page_config(page_title="Togforsinkelser på Sandvika stasjon", layout="wi
 st.title("Togforsinkelser på Sandvika stasjon (tog som kommer fra Oslo)")
 st.caption("Basert på avgangsdata fra Oslo S og slutt-destinasjon (proxy for tog som passerer Sandvika).")
 
-# Spiller av musikk fra YouTube
-st.video("https://www.youtube.com/watch?v=GHe8kKO8uds")
+# Skjult YouTube-avspiller for bakgrunnsmusikk
+st.markdown(
+    '<iframe width="0" height="0" src="https://www.youtube.com/embed/GHe8kKO8uds?autoplay=1" frameborder="0" allow="autoplay; encrypted-media"></iframe>',
+    unsafe_allow_html=True
+)
 
 CSV_PATH = "Alle_reiser_Oslo_Sandvika.csv"
 OSLO_TZ = ZoneInfo("Europe/Oslo")
