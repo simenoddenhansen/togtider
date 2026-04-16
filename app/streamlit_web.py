@@ -9,7 +9,7 @@ st.title("Togforsinkelser: Oslo S ➔ Sandvika 🚂")
 
 # Finn riktig sti til CSV-filen
 # Vi bruker ../ for å gå opp fra /app/-mappen til rotmappen
-CSV_PATH = "../Alle_reiser_Oslo_Sandvika.csv"
+CSV_PATH = "Alle_reiser_Oslo_Sandvika.csv"
 
 @st.cache_data(ttl=600)
 def load_data():
