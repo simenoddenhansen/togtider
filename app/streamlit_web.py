@@ -26,7 +26,7 @@ st.caption("Basert på avgangsdata fra Oslo S og slutt-destinasjon (proxy for to
 # Egendefinert knapp for å starte skjult YouTube-musikk (omgår nettleserens autoplay-blokkering)
 components.html(
     """
-    <div id="player"></div>
+   <div id="player"></div>
     <button id="play-btn" onclick="playAudio()" style="padding: 8px 16px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: sans-serif; font-size: 14px;">
         🎵 Spill bakgrunnsmusikk
     </button>
@@ -42,7 +42,7 @@ components.html(
             player = new YT.Player('player', {
                 height: '0',
                 width: '0',
-                videoId: 'GHe8kKO8uds',
+                videoId: 'kMLLXxtUIxc', // <-- Updated video ID here
                 playerVars: { 'playsinline': 1 }
             });
         }
@@ -289,4 +289,7 @@ with col_text:
         "Dataene publiseres under Norsk lisens for offentlige data (NLOD). "
         "Entur påtar seg intet ansvar for konsekvenser av feil i dataene eller API-systemene."
     )
+<<<<<<< HEAD
     
+=======
+>>>>>>> 51b9166c5ffd952d5f02e6528349e72e3d9f9843
