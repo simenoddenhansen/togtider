@@ -18,7 +18,8 @@ def load_data():
         return pd.DataFrame()
     
     df = pd.read_csv(CSV_PATH)
-    df['scheduledDeparture'] = pd.to_datetime(df['scheduledDeparture'])
+    df['scheduledDeparture'] = pd.to_datetime(df['scheduledDeparture'], utc=True)
+    df['scheduledDeparture'] = df['scheduledDeparture'].dt.tz_convert('Europe/Oslo')
     return df
 
 df = load_data()
