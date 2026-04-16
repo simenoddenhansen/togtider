@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Togforsinkelser på Sandvika stasjon", layout="wide")
@@ -11,10 +12,39 @@ st.set_page_config(page_title="Togforsinkelser på Sandvika stasjon", layout="wi
 st.title("Togforsinkelser på Sandvika stasjon (tog som kommer fra Oslo)")
 st.caption("Basert på avgangsdata fra Oslo S og slutt-destinasjon (proxy for tog som passerer Sandvika).")
 
-# Skjult YouTube-avspiller for bakgrunnsmusikk
-st.markdown(
-    '<iframe width="0" height="0" src="https://www.youtube.com/embed/GHe8kKO8uds?autoplay=1" frameborder="0" allow="autoplay; encrypted-media"></iframe>',
-    unsafe_allow_html=True
+# Egendefinert knapp for å starte skjult YouTube-musikk (omgår nettleserens autoplay-blokkering)
+components.html(
+    """
+    <div id="player"></div>
+    <button id="play-btn" onclick="playAudio()" style="padding: 8px 16px; background-color: #ff4b4b; color: white; border: none; border-radius: 4px; cursor: pointer; font-family: sans-serif; font-size: 14px;">
+        🎵 Spill bakgrunnsmusikk
+    </button>
+
+    <script>
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        var player;
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('player', {
+                height: '0',
+                width: '0',
+                videoId: 'GHe8kKO8uds',
+                playerVars: { 'playsinline': 1 }
+            });
+        }
+
+        function playAudio() {
+            if (player && typeof player.playVideo === 'function') {
+                player.playVideo();
+                document.getElementById('play-btn').style.display = 'none';
+            }
+        }
+    </script>
+    """,
+    height=45,
 )
 
 CSV_PATH = "Alle_reiser_Oslo_Sandvika.csv"
