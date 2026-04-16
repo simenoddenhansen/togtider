@@ -2,8 +2,8 @@ name: Hourly Entur Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Kjører hvert 0. minutt i hver time
-  workflow_dispatch:      # Lar deg starte scriptet manuelt for å teste
+    - cron: '10 * * * *'  # Kjører hvert 10. minutt i hver time
+  workflow_dispatch:      #For å kunne kjøre den manuelt
 
 jobs:
   scrape:
