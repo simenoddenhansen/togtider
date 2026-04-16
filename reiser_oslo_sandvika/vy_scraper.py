@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 import pandas as pd
 import os
 import signal
-from zoneinfo import ZoneInfo 
+import pytz
 
 ## Info om dataene:
 #  https://enturas.atlassian.net/wiki/spaces/PUBLIC/pages/637370392/SIRI-ET
@@ -17,7 +17,7 @@ url = "https://api.entur.io/journey-planner/v3/graphql"
 
 # Vi ønsker å hente data for den siste timen.
 # Tvinger GitHub-serveren til å bruke norsk tid (Europe/Oslo) i stedet for serverens UTC-tid.
-oslo_tz = ZoneInfo("Europe/Oslo")
+oslo_tz = pytz.timezone("Europe/Oslo")
 now = datetime.now(oslo_tz)
 one_hour_ago = now - timedelta(hours=1)
 start = one_hour_ago.replace(minute=0, second=0, microsecond=0)
@@ -149,8 +149,9 @@ try:
 
     df_new = pd.DataFrame(rows, columns=expected_columns)
 
-    kildefil = "OsloS_til_Sandvika_reiser_siste_timen.csv"
-    masterfil = "Alle_reiser_Oslo_Sandvika.csv"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    kildefil = os.path.join(script_dir, "OsloS_til_Sandvika_reiser_siste_timen.csv")
+    masterfil = os.path.join(script_dir, "Alle_reiser_Oslo_Sandvika.csv")
 
     # Always write the last-hour file (even if empty) to keep the schema consistent
     df_new.to_csv(kildefil, index=False)

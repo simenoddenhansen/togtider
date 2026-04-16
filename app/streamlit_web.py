@@ -1,11 +1,22 @@
 import os
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+import pytz
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+
+    _HAS_AUTOREFRESH = True
+except ModuleNotFoundError:
+    # Optional dependency: keep the app working even if it's not installed.
+    _HAS_AUTOREFRESH = False
+
+    def st_autorefresh(*args, **kwargs):  # type: ignore[no-redef]
+        return None
+
 
 st.set_page_config(page_title="Togforsinkelser på Sandvika stasjon", layout="wide")
 
@@ -47,22 +58,42 @@ components.html(
     height=45,
 )
 
-CSV_PATH = "Alle_reiser_Oslo_Sandvika.csv"
-OSLO_TZ = ZoneInfo("Europe/Oslo")
+# Finn stien til CSV-filen
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+CSV_PATH = os.path.join(project_root, "reiser_oslo_sandvika", "Alle_reiser_Oslo_Sandvika.csv")
+
+if not os.path.exists(CSV_PATH):
+    # Fallback for ulike kjøremiljøer (f.eks. hvis man kjører fra roten uten absolutt __file__)
+    fallback = os.path.join("reiser_oslo_sandvika", "Alle_reiser_Oslo_Sandvika.csv")
+    if os.path.exists(fallback):
+        CSV_PATH = fallback
+
+OSLO_TZ = pytz.timezone("Europe/Oslo")
 
 # Auto-refresh so the countdown (and newly updated CSV data) shows up without manual reload
-st_autorefresh(interval=1000, key="countdown-refresh")
+if _HAS_AUTOREFRESH:
+    st_autorefresh(interval=1000, key="countdown-refresh")
+else:
+    st.info(
+        "Automatisk nedtelling krever pakken 'streamlit-autorefresh'. "
+        "Installer den i miljøet ditt for å få auto-oppdatering."
+    )
 
 
-def _get_mtime(path: str) -> float | None:
+def _get_mtime(path: str):
     try:
+        if not os.path.exists(path):
+            st.error(f"Filen finnes ikke på stien: {path}")
+            return None
         return os.path.getmtime(path)
-    except OSError:
+    except OSError as e:
+        st.error(f"OS Error for sti {path}: {e}")
         return None
 
 
 @st.cache_data
-def load_data(path: str, mtime: float | None) -> pd.DataFrame:
+def load_data(path: str, mtime) -> pd.DataFrame:
     if mtime is None or not os.path.exists(path):
         return pd.DataFrame()
 
@@ -258,3 +289,4 @@ with col_text:
         "Dataene publiseres under Norsk lisens for offentlige data (NLOD). "
         "Entur påtar seg intet ansvar for konsekvenser av feil i dataene eller API-systemene."
     )
+    

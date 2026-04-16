@@ -1,0 +1,23 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Python cache / compiled
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment files / secrets
+.env
+.env.*
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Logs / local artifacts
+*.log
+streamlit.log
+output.html
