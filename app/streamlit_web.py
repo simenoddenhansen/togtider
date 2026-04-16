@@ -289,7 +289,3 @@ with col_text:
         "Dataene publiseres under Norsk lisens for offentlige data (NLOD). "
         "Entur påtar seg intet ansvar for konsekvenser av feil i dataene eller API-systemene."
     )
-<<<<<<< HEAD
-    
-=======
->>>>>>> 51b9166c5ffd952d5f02e6528349e72e3d9f9843
