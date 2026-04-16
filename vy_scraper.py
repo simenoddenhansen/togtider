@@ -43,6 +43,7 @@ query = f"""
               frontText
               }}
           serviceJourney {{
+              id
               journeyPattern {{
                   line {{
                       id
@@ -50,7 +51,7 @@ query = f"""
                       transportMode
                   }}
               }}
-        }}
+          }}
       }}
     }}
   }}
@@ -69,29 +70,62 @@ def timeout_handler(signum, frame):
 signal.signal(signal.SIGALRM, timeout_handler)
 signal.alarm(600)  # 10 min
 
-response = requests.post(url, json={"query": query}, headers=headers)
-data = response.json()
-estimated_calls = data['data']['stopPlace']['estimatedCalls']
-
-# Parse as JSON - Dette er vår behandling av de dataene vi har bedt om fra API-kallet. 
-
+# Parse as JSON - Dette er vår behandling av de dataene vi har bedt om fra API-kallet.
 try:
+    response = requests.post(url, json={"query": query}, headers=headers, timeout=60)
+    response.raise_for_status()
     data = response.json()
-    departures_raw = data["data"]["stopPlace"]["estimatedCalls"]
-    rows = []  # <- Make sure this line is included!
 
+    if "errors" in data:
+        print("GraphQL returned errors:")
+        print(json.dumps(data["errors"], indent=2))
+
+    departures_raw = (
+        data.get("data", {})
+        .get("stopPlace", {})
+        .get("estimatedCalls")
+    )
+    if departures_raw is None:
+        print("Response did not include expected data. Here's what we got:")
+        print(json.dumps(data, indent=2))
+        departures_raw = []
+
+    expected_columns = [
+        "scheduledDeparture",
+        "actualDeparture",
+        "isDelayed",
+        "delaySeconds",
+        "destination",
+        "routeId",
+        "routeName",
+        "transportMode",
+        "serviceJourneyId",
+    ]
+
+    rows = []
     for dep in departures_raw:
-        aimed = dep["aimedDepartureTime"]
+        aimed = dep.get("aimedDepartureTime")
+        if aimed is None:
+            continue
 
-        ## Håndtere at faktisk avreisetid gir Nonetype hvis den er presis.
-        if dep["actualDepartureTime"] is None:
-            actual = aimed
-        else:
-            actual = dep["actualDepartureTime"]
+        # Håndtere at faktisk avreisetid gir None hvis den er presis.
+        actual = dep.get("actualDepartureTime") or aimed
 
-        destination = dep["destinationDisplay"]["frontText"]
-        route_id = dep["serviceJourney"]["journeyPattern"]["line"]["id"]
-        route_name = dep["serviceJourney"]["journeyPattern"]["line"]["name"]
+        destination = (dep.get("destinationDisplay") or {}).get("frontText")
+        if destination not in ["Skien", "Spikkestad", "Kongsberg", "Drammen", "Asker"]:
+            continue
+
+        service_journey = dep.get("serviceJourney") or {}
+        service_journey_id = service_journey.get("id")
+
+        line = (
+            (service_journey.get("journeyPattern") or {})
+            .get("line")
+        ) or {}
+
+        route_id = line.get("id")
+        route_name = line.get("name")
+        transport_mode = line.get("transportMode")
 
         # Parser tidspunktene til datetime-objekter for å kunne kalkulere forsinkelse
         aimed_dt = datetime.fromisoformat(aimed)
@@ -99,51 +133,63 @@ try:
 
         # Kalkuler forsinkelse i sekunder, og marker som forsinket hvis den er mer enn 0 sekunder
         delay_seconds = (actual_dt - aimed_dt).total_seconds()
-        is_delayed = int(delay_seconds > 0)  # dummy: delayed if more than 60s
-        if destination in ["Skien", "Spikkestad", "Kongsberg", "Drammen", "Asker"]:
-            rows.append({
-                "scheduledDeparture": aimed,
-                "actualDeparture": actual,
-                "isDelayed": is_delayed,
-                "delaySeconds": delay_seconds,
-                "destination": destination,
-            })
+        is_delayed = int(delay_seconds > 0)
 
-    df = pd.DataFrame(rows)
-    
-    
+        rows.append({
+            "scheduledDeparture": aimed,
+            "actualDeparture": actual,
+            "isDelayed": is_delayed,
+            "delaySeconds": delay_seconds,
+            "destination": destination,
+            "routeId": route_id,
+            "routeName": route_name,
+            "transportMode": transport_mode,
+            "serviceJourneyId": service_journey_id,
+        })
+
+    df_new = pd.DataFrame(rows, columns=expected_columns)
+
     kildefil = "OsloS_til_Sandvika_reiser_siste_timen.csv"
     masterfil = "Alle_reiser_Oslo_Sandvika.csv"
-    
-    df.to_csv(kildefil, index=False)
 
-    # Debugger hvis det ikke er noe data.
-    if "data" not in data:
-        print("Response did not include 'data'. Here's what we got:")
-        print(json.dumps(data, indent=2))
-        exit()
+    # Always write the last-hour file (even if empty) to keep the schema consistent
+    df_new.to_csv(kildefil, index=False)
 
-    with open(kildefil, "r") as src:
-        lines = src.readlines()
-
-    # If master file doesn't exist, create it from current data
-    if not os.path.exists(masterfil):
-        if len(lines) > 1:
-            df.to_csv(masterfil, index=False)
-            print(f"Created new master file: {masterfil}")
+    # Master-file update with schema migration (preserve old rows and add new columns as NA)
+    if os.path.exists(masterfil):
+        df_master = pd.read_csv(masterfil)
+        df_master = df_master.loc[:, ~df_master.columns.str.contains('^Unnamed')]
     else:
-        # Append to existing master file
-        if len(lines) > 1:
-            with open(masterfil, "a") as tgt:
-                tgt.writelines(lines[1:])
-    
-    # Fjerner duplikater i masterfilen basert på 'scheduledDeparture' og 'destination'
-    df_master = pd.read_csv(masterfil)
-    df_master = df_master.loc[:, ~df_master.columns.str.contains('^Unnamed')]
-    df_master = df_master.drop_duplicates(subset=['scheduledDeparture', 'destination'])
-    df_master.to_csv(masterfil, index=False)
+        df_master = pd.DataFrame()
 
-except json.JSONDecodeError:
-    print("Failed to decode JSON. Response text:")
-    print(response.text)
+    # Add missing columns to both frames
+    for col in expected_columns:
+        if col not in df_master.columns:
+            df_master[col] = pd.NA
+
+    for col in df_master.columns:
+        if col not in df_new.columns:
+            df_new[col] = pd.NA
+
+    combined_columns = list(dict.fromkeys(list(df_master.columns) + list(df_new.columns)))
+    df_master = df_master.reindex(columns=combined_columns)
+    df_new = df_new.reindex(columns=combined_columns)
+
+    df_all = pd.concat([df_master, df_new], ignore_index=True)
+
+    # De-dupe (keep first seen) while avoiding accidental drops when IDs exist
+    dedupe_keys = ["scheduledDeparture", "destination"]
+    for extra_key in ["routeId", "serviceJourneyId"]:
+        if extra_key in df_all.columns:
+            dedupe_keys.append(extra_key)
+
+    df_all = df_all.drop_duplicates(subset=dedupe_keys)
+    df_all.to_csv(masterfil, index=False)
+
+except (requests.RequestException, json.JSONDecodeError) as e:
+    print("Failed to fetch or decode data:")
+    print(str(e))
+    if 'response' in locals():
+        print("Response text:")
+        print(response.text)
     exit()
