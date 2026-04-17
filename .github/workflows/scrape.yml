@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Installer biblioteker
-        run: pip install requests pandas tzdata 
+        run: pip install requests pandas tzdata pytz
 
       - name: Kjør scraper
         run: python reiser_oslo_sandvika/vy_scraper.py

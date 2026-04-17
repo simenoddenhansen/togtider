@@ -174,7 +174,7 @@ else:
     selected_route_names = st.sidebar.multiselect("Linje / rute-navn", route_names, default=route_names)
 
     transport_modes = sorted(df_time["transportMode"].fillna("NA").unique().tolist())
-    selected_transport_modes = st.sidebar.multiselect("Transportmode", transport_modes, default=transport_modes)
+    selected_transport_modes = st.sidebar.multiselect("Transporttype", transport_modes, default=transport_modes)
 
     only_delayed = st.sidebar.checkbox("Vis kun forsinkede", value=False)
     min_delay_min = st.sidebar.slider("Min forsinkelse (min)", min_value=0, max_value=60, value=0, step=1)
@@ -184,7 +184,7 @@ else:
     if selected_destinations:
         df_filtered = df_filtered[df_filtered["destination"].isin(selected_destinations)]
 
-    if selected_route_names:
+    if selected_route_names and "routeName" in df_filtered.columns:
         df_filtered = df_filtered[df_filtered["routeName"].fillna("NA").isin(selected_route_names)]
 
     if selected_transport_modes:
