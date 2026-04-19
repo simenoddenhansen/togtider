@@ -2,11 +2,19 @@ import os
 import pandas as pd
 import streamlit as st
 import pydeck as pdk
+import requests
 
 st.set_page_config(page_title="Forsinkelser Norge", page_icon="📊", layout="wide")
 
 st.title("📊 Forsinkelser i Norge")
 st.caption("Se forsinkelsesdata for togstasjoner i hele landet, samlet inn automatisk.")
+
+# --- API config (for route geometry) ---
+API_URL = "https://api.entur.io/journey-planner/v3/graphql"
+API_HEADERS = {
+    "ET-Client-Name": "simenoddenhansen-togtider_dev",
+    "Content-Type": "application/json",
+}
 
 # --- Finn data ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +42,98 @@ def load_stations(path):
     if not os.path.exists(path):
         return pd.DataFrame()
     return pd.read_csv(path)
+
+
+@st.cache_data(ttl=600)
+def fetch_route_geometry(line_id):
+    """Henter stoppesteder (quays) for en linje fra Entur API."""
+    query = """
+    query ($lineId: ID!) {
+      line(id: $lineId) {
+        id
+        name
+        transportMode
+        journeyPatterns {
+          quays {
+            id
+            name
+            latitude
+            longitude
+          }
+        }
+      }
+    }
+    """
+    try:
+        r = requests.post(
+            API_URL,
+            json={"query": query, "variables": {"lineId": line_id}},
+            headers=API_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+        line = data.get("data", {}).get("line")
+        if not line:
+            return None
+
+        # Velg journey pattern med flest stopp (typisk lengst rute)
+        best_pattern = None
+        best_count = 0
+        for jp in line.get("journeyPatterns", []):
+            quays = jp.get("quays", [])
+            valid = [q for q in quays if q.get("latitude") and q.get("longitude")]
+            if len(valid) > best_count:
+                best_count = len(valid)
+                best_pattern = valid
+
+        if not best_pattern or best_count < 2:
+            return None
+
+        return {
+            "name": line.get("name", ""),
+            "mode": line.get("transportMode", ""),
+            "stops": best_pattern,
+        }
+    except Exception:
+        return None
+
+
+def delay_to_color(delay_sec, max_delay_val):
+    """Konverterer forsinkelse i sekunder til [R, G, B, A] farge (grønn → gul → rød)."""
+    if max_delay_val <= 0:
+        return [44, 200, 50, 200]
+    ratio = min(max(delay_sec / max_delay_val, 0.0), 1.0)
+    if ratio < 0.5:
+        # Green → Yellow
+        r = int(255 * (ratio * 2))
+        g = 200
+        b = 50
+    else:
+        # Yellow → Red
+        r = 255
+        g = int(200 * (1 - (ratio - 0.5) * 2))
+        b = 50
+    return [r, g, b, 200]
+
+
+def compute_zoom(lat_spread, lng_spread):
+    """Beregn passende zoom-nivå fra geografisk spredning."""
+    spread = max(lat_spread, lng_spread)
+    if spread > 10:
+        return 4
+    elif spread > 5:
+        return 5
+    elif spread > 2:
+        return 6
+    elif spread > 1:
+        return 7
+    elif spread > 0.5:
+        return 8
+    elif spread > 0.1:
+        return 10
+    else:
+        return 12
 
 
 # Load data
@@ -161,7 +261,7 @@ else:
     st.caption("Velg «Alle ruter» for å se rangering.")
 
 # ─────────────────────────────────────────────────────────────
-# Map: stations colored by delay
+# Map: stations colored by delay + route lines
 # ─────────────────────────────────────────────────────────────
 
 st.markdown("---")
@@ -186,29 +286,16 @@ if not df_view.empty and not df_stations.empty:
     if not df_map.empty and "latitude" in df_map.columns:
         df_map = df_map.dropna(subset=["latitude", "longitude"])
 
-        # Color: green (0 delay) → yellow → red (high delay)
+        # Color scale reference
         max_delay_val = max(df_map["avgDelay"].max(), 1)
 
-        def delay_to_color(delay_sec):
-            ratio = min(delay_sec / max_delay_val, 1.0)
-            if ratio < 0.5:
-                # Green → Yellow
-                r = int(255 * (ratio * 2))
-                g = 200
-                b = 50
-            else:
-                # Yellow → Red
-                r = 255
-                g = int(200 * (1 - (ratio - 0.5) * 2))
-                b = 50
-            return [r, g, b, 180]
-
-        df_map["color"] = df_map["avgDelay"].apply(delay_to_color)
+        df_map["color"] = df_map["avgDelay"].apply(lambda d: delay_to_color(d, max_delay_val))
         df_map["delayMin"] = (df_map["avgDelay"] / 60).round(1)
 
         scatter_data = df_map.to_dict("records")
 
-        layer = pdk.Layer(
+        # Station scatter layer
+        scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             data=scatter_data,
             get_position=["longitude", "latitude"],
@@ -219,27 +306,80 @@ if not df_view.empty and not df_stations.empty:
             pickable=True,
         )
 
+        layers = [scatter_layer]
+
+        # ─── Route lines (when a specific line is selected) ───
+        if selected_line != "— Alle ruter —" and "lineId" in df_line.columns:
+            line_ids = df_line["lineId"].dropna().unique().tolist()
+
+            # Build a lookup: stationId → avgDelay (in seconds)
+            delay_lookup = dict(zip(df_map["stationId"], df_map["avgDelay"]))
+
+            line_segments = []
+
+            for lid in line_ids[:5]:  # Limit to avoid excessive API calls
+                geometry = fetch_route_geometry(lid)
+                if geometry is None:
+                    continue
+
+                stops = geometry["stops"]
+
+                for i in range(len(stops) - 1):
+                    s1 = stops[i]
+                    s2 = stops[i + 1]
+
+                    # Try to match quay IDs back to station delays
+                    # Quay IDs and station IDs may not match directly,
+                    # so we use the station name as fallback
+                    s1_name = s1.get("name", "")
+                    s2_name = s2.get("name", "")
+
+                    # Find delay for each endpoint by station name
+                    s1_delay = 0
+                    s2_delay = 0
+                    for _, row in df_map.iterrows():
+                        if row["name"] and s1_name and row["name"].lower().startswith(s1_name.lower()[:8]):
+                            s1_delay = row["avgDelay"]
+                        if row["name"] and s2_name and row["name"].lower().startswith(s2_name.lower()[:8]):
+                            s2_delay = row["avgDelay"]
+
+                    # Segment delay = average of the two endpoints
+                    seg_delay = (s1_delay + s2_delay) / 2
+                    seg_color = delay_to_color(seg_delay, max_delay_val)
+
+                    line_segments.append({
+                        "from_lat": s1["latitude"],
+                        "from_lng": s1["longitude"],
+                        "to_lat": s2["latitude"],
+                        "to_lng": s2["longitude"],
+                        "color": seg_color,
+                        "route": geometry["name"],
+                        "delayMin": round(seg_delay / 60, 1),
+                    })
+
+            if line_segments:
+                line_layer = pdk.Layer(
+                    "LineLayer",
+                    data=line_segments,
+                    get_source_position=["from_lng", "from_lat"],
+                    get_target_position=["to_lng", "to_lat"],
+                    get_color="color",
+                    get_width=4,
+                    width_min_pixels=2,
+                    pickable=True,
+                )
+                # Insert line layer before scatter so dots render on top
+                layers.insert(0, line_layer)
+
+        # Map center & zoom
         center_lat = df_map["latitude"].mean()
         center_lng = df_map["longitude"].mean()
-
         lat_spread = df_map["latitude"].max() - df_map["latitude"].min()
         lng_spread = df_map["longitude"].max() - df_map["longitude"].min()
-        spread = max(lat_spread, lng_spread)
-        if spread > 10:
-            zoom = 4
-        elif spread > 5:
-            zoom = 5
-        elif spread > 2:
-            zoom = 6
-        elif spread > 1:
-            zoom = 7
-        elif spread > 0.5:
-            zoom = 8
-        else:
-            zoom = 10
+        zoom = compute_zoom(lat_spread, lng_spread)
 
         deck = pdk.Deck(
-            layers=[layer],
+            layers=layers,
             initial_view_state=pdk.ViewState(
                 latitude=center_lat,
                 longitude=center_lng,
@@ -260,13 +400,15 @@ if not df_view.empty and not df_stations.empty:
                     "borderRadius": "6px",
                 },
             },
-            map_style="mapbox://styles/mapbox/dark-v11",
+            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
 
         st.pydeck_chart(deck, use_container_width=True)
-        st.caption(
-            "🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse"
-        )
+
+        legend_text = "🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse"
+        if selected_line != "— Alle ruter —":
+            legend_text += " · Linjer mellom stopp viser forsinkelse langs ruten"
+        st.caption(legend_text)
     else:
         st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
 else:
