@@ -19,7 +19,8 @@ except ModuleNotFoundError:
 
 
 st.set_page_config(
-    page_title="Togforsinkelser på Sandvika stasjon",
+    page_title="Togforsinkelser",
+    page_icon="🚆",
     layout="wide")
 
 st.title("Togforsinkelser på Sandvika stasjon (tog som kommer fra Oslo)")

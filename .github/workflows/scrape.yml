@@ -21,13 +21,22 @@ jobs:
       - name: Installer biblioteker
         run: pip install requests pandas tzdata pytz
 
-      - name: Kjør scraper
+      - name: Kjør Oslo-Sandvika scraper
         run: python reiser_oslo_sandvika/vy_scraper.py
+
+      - name: Oppdater stasjonsliste (hvis den mangler)
+        run: |
+          if [ ! -f data_collection/alle_stasjoner.csv ]; then
+            python data_collection/hent_alle_stasjoner.py
+          fi
+
+      - name: Kjør landsdekkende forsinkelsesscraper
+        run: python data_collection/forsinkelser_scraper.py --modes rail
 
       - name: Lagre endringer til repo (Commit & Push)
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
-          git add reiser_oslo_sandvika/*.csv ruteData/*.csv
+          git add reiser_oslo_sandvika/*.csv ruteData/*.csv data_collection/*.csv
           git commit -m "Automatisk oppdatering av togtider" || echo "Ingen endringer å lagre"
           git push
