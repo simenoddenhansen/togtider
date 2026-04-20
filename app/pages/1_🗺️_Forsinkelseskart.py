@@ -158,6 +158,51 @@ with kpi_cols[3]:
 
 
 # ═════════════════════════════════════════════════════════════════
+# DELAY DISTRIBUTION
+# ═════════════════════════════════════════════════════════════════
+
+st.markdown("---")
+st.subheader("📊 Forsinkelsesfordeling")
+
+if not df.empty and "delaySeconds" in df.columns:
+    delay_min = df["delaySeconds"] / 60
+
+    # Define severity buckets
+    buckets = {
+        "I rute (0 min)":    (delay_min == 0).sum(),
+        "< 1 min":           ((delay_min > 0) & (delay_min < 1)).sum(),
+        "1–5 min":           ((delay_min >= 1) & (delay_min < 5)).sum(),
+        "5–15 min":          ((delay_min >= 5) & (delay_min < 15)).sum(),
+        "15–30 min":         ((delay_min >= 15) & (delay_min < 30)).sum(),
+        "30+ min":           (delay_min >= 30).sum(),
+    }
+
+    dist_left, dist_right = st.columns([1, 2])
+
+    with dist_left:
+        st.markdown("**Antall avganger per forsinkelsesgruppe:**")
+
+        emojis = ["🟢", "🟢", "🟡", "🟠", "🔴", "🔴"]
+        for (label, count), emoji in zip(buckets.items(), emojis):
+            pct_bucket = (100 * count / total_n) if total_n > 0 else 0
+            st.markdown(f"{emoji} **{label}**: {count:,} ({pct_bucket:.1f}%)")
+
+        on_time = buckets["I rute (0 min)"] + buckets["< 1 min"]
+        on_time_pct = (100 * on_time / total_n) if total_n > 0 else 0
+        st.markdown(f"\n**Punktlighet (< 1 min):** {on_time_pct:.1f}%")
+
+    with dist_right:
+        bucket_df = pd.DataFrame(
+            {"Antall avganger": list(buckets.values())},
+            index=list(buckets.keys()),
+        )
+        st.bar_chart(bucket_df)
+
+else:
+    st.info("Ingen forsinkelsesdata tilgjengelig for å vise fordeling.")
+
+
+# ═════════════════════════════════════════════════════════════════
 # MAP
 # ═════════════════════════════════════════════════════════════════
 
