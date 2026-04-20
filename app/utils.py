@@ -224,6 +224,31 @@ def download_csv_button(df, prefix="togforsinkelser"):
     )
 
 
+# ─── Plotly helpers ───────────────────────────────────────────────
+
+PLOTLY_TEMPLATE = "plotly_dark"
+
+# Consistent green → yellow → red color scale for all delay charts
+DELAY_COLOR_SCALE = [
+    [0.0, "#2ecc71"],   # Green — on time
+    [0.3, "#f1c40f"],   # Yellow — minor
+    [0.6, "#e67e22"],   # Orange — moderate
+    [1.0, "#e74c3c"],   # Red — severe
+]
+
+# Accent color for primary charts (matches theme primaryColor)
+ACCENT_COLOR = "#4fc3f7"
+
+# Norwegian weekday names in correct order (Monday first)
+WEEKDAY_NAMES = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"]
+
+
+def styled_kpi(label, value, delta=None, delta_color="normal"):
+    """Render a metric inside a bordered container for visual separation."""
+    with st.container(border=True):
+        st.metric(label, value, delta=delta, delta_color=delta_color)
+
+
 # ─── Entur credit footer ─────────────────────────────────────────
 
 def entur_footer():
@@ -241,3 +266,4 @@ def entur_footer():
             "Dataene publiseres under Norsk lisens for offentlige data (NLOD). "
             "Entur påtar seg intet ansvar for konsekvenser av feil i dataene eller API-systemene."
         )
+

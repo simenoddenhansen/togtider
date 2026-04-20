@@ -1,36 +1,42 @@
 """
 Togforsinkelser – Hovedside / Dashboard
 ────────────────────────────────────────
-National landing page with KPIs, daily trend chart, worst-performing
-lines, and a punctuality gauge.  Sidebar filters propagate via
-session_state so they can be reused on sub-pages.
+National landing page with styled KPIs, Plotly interactive charts,
+a temporal heatmap (hour × weekday), and trend delta indicators.
 """
 
 import os
 from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import pytz
 import streamlit as st
 
 try:
     from streamlit_autorefresh import st_autorefresh
+
     _HAS_AUTOREFRESH = True
 except ModuleNotFoundError:
     _HAS_AUTOREFRESH = False
+
     def st_autorefresh(*args, **kwargs):
         return None
+
 
 # Local shared helpers
 from utils import (
     OSLO_TZ,
-    COLUMN_LABELS,
-    DISPLAY_COLUMNS,
+    ACCENT_COLOR,
+    DELAY_COLOR_SCALE,
+    PLOTLY_TEMPLATE,
+    WEEKDAY_NAMES,
     load_delay_data,
-    load_stations,
     master_csv_path,
-    stations_csv_path,
     get_mtime,
+    styled_kpi,
     download_csv_button,
     entur_footer,
 )
@@ -115,11 +121,14 @@ selected_time = st.sidebar.selectbox(
 df = df_master.copy()
 if "scheduledDeparture" in df.columns:
     if selected_time == "Siste 24 timer":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(hours=24))]
+        cutoff = now_oslo - timedelta(hours=24)
+        df = df[df["scheduledDeparture"] >= cutoff]
     elif selected_time == "Siste 7 dager":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(days=7))]
+        cutoff = now_oslo - timedelta(days=7)
+        df = df[df["scheduledDeparture"] >= cutoff]
     elif selected_time == "Siste 30 dager":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(days=30))]
+        cutoff = now_oslo - timedelta(days=30)
+        df = df[df["scheduledDeparture"] >= cutoff]
 
 # Line filter
 all_lines = (
@@ -174,12 +183,10 @@ if only_delayed and "isDelayed" in df.columns:
 
 
 # ═════════════════════════════════════════════════════════════════
-# KPIs
+# KPIs with styled cards and delta indicators
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
-
-kpi_cols = st.columns(4)
 
 total_n = len(df)
 delayed_n = int(df["isDelayed"].sum()) if "isDelayed" in df.columns else 0
@@ -187,19 +194,49 @@ pct_delayed = (100 * delayed_n / total_n) if total_n > 0 else 0
 avg_delay_min = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
 punctuality = 100 - pct_delayed
 
+# Compute delta vs. previous equivalent period for context
+delta_text = None
+if "scheduledDeparture" in df_master.columns and selected_time != "Alle":
+    period_map = {
+        "Siste 24 timer": timedelta(hours=24),
+        "Siste 7 dager": timedelta(days=7),
+        "Siste 30 dager": timedelta(days=30),
+    }
+    period = period_map.get(selected_time, timedelta(days=30))
+    prev_start = now_oslo - (period * 2)
+    prev_end = now_oslo - period
+    df_prev = df_master[
+        (df_master["scheduledDeparture"] >= prev_start)
+        & (df_master["scheduledDeparture"] < prev_end)
+    ]
+    if len(df_prev) > 0 and "isDelayed" in df_prev.columns:
+        prev_pct = 100 * df_prev["isDelayed"].mean()
+        prev_punct = 100 - prev_pct
+        delta_punct = punctuality - prev_punct
+        delta_text = f"{delta_punct:+.1f}pp"
+
+kpi_cols = st.columns(4)
 with kpi_cols[0]:
-    st.metric("Totale avganger", f"{total_n:,}".replace(",", " "))
+    styled_kpi("Totale avganger", f"{total_n:,}".replace(",", " "))
 with kpi_cols[1]:
-    st.metric("Forsinkede", f"{delayed_n:,} ({pct_delayed:.0f}%)".replace(",", " "))
+    styled_kpi(
+        "Forsinkede",
+        f"{delayed_n:,} ({pct_delayed:.0f}%)".replace(",", " "),
+    )
 with kpi_cols[2]:
-    st.metric("Snitt forsinkelse", f"{avg_delay_min:.1f} min")
+    styled_kpi("Snitt forsinkelse", f"{avg_delay_min:.1f} min")
 with kpi_cols[3]:
     emoji = "🟢" if punctuality >= 90 else ("🟡" if punctuality >= 75 else "🔴")
-    st.metric("Punktlighet", f"{emoji} {punctuality:.0f}%")
+    styled_kpi(
+        "Punktlighet",
+        f"{emoji} {punctuality:.1f}%",
+        delta=delta_text,
+        delta_color="normal",
+    )
 
 
 # ═════════════════════════════════════════════════════════════════
-# Punctuality over time periods
+# Punctuality per time period
 # ═════════════════════════════════════════════════════════════════
 
 if "scheduledDeparture" in df_master.columns and not df_master.empty:
@@ -217,13 +254,15 @@ if "scheduledDeparture" in df_master.columns and not df_master.empty:
         if len(df_period) > 0 and "isDelayed" in df_period.columns:
             p = 100 * (1 - df_period["isDelayed"].mean())
             emoji = "🟢" if p >= 90 else ("🟡" if p >= 75 else "🔴")
-            col.metric(label, f"{emoji} {p:.1f}%", f"{len(df_period)} avganger")
+            with col:
+                styled_kpi(label, f"{emoji} {p:.1f}%", delta=f"{len(df_period)} avganger")
         else:
-            col.metric(label, "—", "Ingen data")
+            with col:
+                styled_kpi(label, "—", delta="Ingen data")
 
 
 # ═════════════════════════════════════════════════════════════════
-# Daily delay chart
+# Daily delay chart (Plotly interactive)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -245,30 +284,111 @@ if not df.empty and "scheduledDeparture" in df.columns:
     )
 
     daily_stats["date"] = pd.to_datetime(daily_stats["date"])
-    daily_stats = daily_stats.set_index("date").sort_index()
+    daily_stats = daily_stats.sort_values("date")
 
-    chart_col = daily_stats[["totalDelayMin"]].rename(
-        columns={"totalDelayMin": "Forsinkelsesminutter"}
+    fig_daily = px.area(
+        daily_stats,
+        x="date",
+        y="totalDelayMin",
+        template=PLOTLY_TEMPLATE,
+        labels={
+            "date": "Dato",
+            "totalDelayMin": "Forsinkelsesminutter",
+        },
+        color_discrete_sequence=[ACCENT_COLOR],
     )
-    st.line_chart(chart_col)
+    fig_daily.update_layout(
+        hovermode="x unified",
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=350,
+        yaxis_title="Forsinkelsesminutter",
+        xaxis_title="",
+    )
+    fig_daily.update_traces(
+        hovertemplate="<b>%{x|%d. %b %Y}</b><br>Forsinkelsesminutter: %{y:.0f}<extra></extra>"
+    )
+    st.plotly_chart(fig_daily, use_container_width=True)
 
     with st.expander("📋 Daglig statistikk (tabell)", expanded=False):
-        daily_display = daily_stats.copy()
+        daily_display = daily_stats.set_index("date").copy()
         daily_display.columns = [
             "Totale forsinkelsesmin",
             "Snitt forsinkelse (min)",
             "Antall avganger",
             "Antall forsinkede",
         ]
-        daily_display["Totale forsinkelsesmin"] = daily_display["Totale forsinkelsesmin"].round(0)
-        daily_display["Snitt forsinkelse (min)"] = daily_display["Snitt forsinkelse (min)"].round(2)
+        daily_display["Totale forsinkelsesmin"] = daily_display[
+            "Totale forsinkelsesmin"
+        ].round(0)
+        daily_display["Snitt forsinkelse (min)"] = daily_display[
+            "Snitt forsinkelse (min)"
+        ].round(2)
         st.dataframe(daily_display, use_container_width=True)
 else:
     st.info("Ingen data tilgjengelig for å vise daglig statistikk.")
 
 
 # ═════════════════════════════════════════════════════════════════
-# Worst-performing lines
+# Temporal heatmap: hour × weekday
+# ═════════════════════════════════════════════════════════════════
+
+st.markdown("---")
+st.subheader("🔥 Forsinkelsesmønster — ukedag × time")
+st.caption(
+    "Heatmap som viser gjennomsnittlig forsinkelse per ukedag og time. "
+    "Hjelper deg å identifisere rushtid-mønstre og problematiske perioder."
+)
+
+if not df.empty and "scheduledDeparture" in df.columns:
+    df_heat = df.dropna(subset=["scheduledDeparture"]).copy()
+    df_heat["hour"] = df_heat["scheduledDeparture"].dt.hour
+    df_heat["weekday"] = df_heat["scheduledDeparture"].dt.weekday  # 0=Mon
+
+    heat_agg = (
+        df_heat.groupby(["weekday", "hour"])["delaySeconds"]
+        .mean()
+        .div(60)
+        .reset_index()
+    )
+    heat_agg.columns = ["weekday", "hour", "avgDelayMin"]
+
+    # Create a full 7×24 matrix
+    heat_pivot = heat_agg.pivot(index="weekday", columns="hour", values="avgDelayMin")
+    heat_pivot = heat_pivot.reindex(index=range(7), columns=range(24), fill_value=0)
+
+    # Cap at 15 min for color clarity
+    heat_values = heat_pivot.values.clip(0, 15)
+
+    fig_heat = px.imshow(
+        heat_values,
+        x=[f"{h:02d}:00" for h in range(24)],
+        y=WEEKDAY_NAMES,
+        color_continuous_scale=DELAY_COLOR_SCALE,
+        zmin=0,
+        zmax=15,
+        labels={"x": "Time", "y": "Ukedag", "color": "Snitt forsinkelse (min)"},
+        template=PLOTLY_TEMPLATE,
+        aspect="auto",
+    )
+    fig_heat.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=300,
+        coloraxis_colorbar=dict(
+            title="Min",
+            tickvals=[0, 5, 10, 15],
+            ticktext=["0", "5", "10", "15+"],
+        ),
+    )
+    fig_heat.update_traces(
+        hovertemplate="<b>%{y}, kl %{x}</b><br>Snitt forsinkelse: %{z:.1f} min<extra></extra>"
+    )
+    st.plotly_chart(fig_heat, use_container_width=True)
+else:
+    st.info("Ingen data tilgjengelig for heatmap.")
+
+
+# ═════════════════════════════════════════════════════════════════
+# Worst-performing lines (Plotly horizontal bar)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -286,19 +406,44 @@ if not df.empty and "lineName" in df.columns:
             avgDelay=lambda x: x["avgDelay"] / 60,
             delayedPct=lambda x: x["delayedPct"] * 100,
         )
-        .sort_values("avgDelay", ascending=False)
-        .head(10)
-        .rename(
-            columns={
-                "avgDelay": "Snitt forsinkelse (min)",
-                "delayedPct": "Andel forsinket (%)",
-                "totalDeps": "Antall avganger",
-            }
+        .sort_values("avgDelay", ascending=True)
+        .tail(10)
+    )
+
+    fig_lines = px.bar(
+        line_stats.reset_index(),
+        y="lineName",
+        x="avgDelay",
+        orientation="h",
+        template=PLOTLY_TEMPLATE,
+        labels={
+            "lineName": "",
+            "avgDelay": "Snitt forsinkelse (min)",
+        },
+        color="avgDelay",
+        color_continuous_scale=DELAY_COLOR_SCALE,
+        hover_data={
+            "delayedPct": ":.1f",
+            "totalDeps": True,
+            "avgDelay": ":.1f",
+        },
+    )
+    fig_lines.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=400,
+        coloraxis_showscale=False,
+        yaxis_title="",
+        xaxis_title="Snitt forsinkelse (min)",
+    )
+    fig_lines.update_traces(
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Snitt forsinkelse: %{x:.1f} min<br>"
+            "Andel forsinket: %{customdata[0]:.1f}%<br>"
+            "Avganger: %{customdata[1]}<extra></extra>"
         )
     )
-    line_stats["Snitt forsinkelse (min)"] = line_stats["Snitt forsinkelse (min)"].round(1)
-    line_stats["Andel forsinket (%)"] = line_stats["Andel forsinket (%)"].round(1)
-    st.dataframe(line_stats, use_container_width=True)
+    st.plotly_chart(fig_lines, use_container_width=True)
 else:
     st.caption("Ingen linjedata tilgjengelig.")
 

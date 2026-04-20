@@ -1,9 +1,8 @@
 """
 Forsinkelseskart – Interaktivt kart over forsinkelser
 ─────────────────────────────────────────────────────
-Combines the best of the old Ruteoversikt and Forsinkelser_Norge
-pages: an interactive pydeck map with colour-coded stations and
-route lines, plus bar charts and a full detail table.
+Interactive pydeck map with colour-coded stations and route lines,
+Plotly interactive charts, and a full detail table.
 """
 
 import os
@@ -12,6 +11,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 import pydeck as pdk
+import plotly.express as px
 import streamlit as st
 
 # Ensure the parent app/ directory is on the path so we can import utils
@@ -19,6 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils import (
     OSLO_TZ,
+    ACCENT_COLOR,
+    DELAY_COLOR_SCALE,
+    PLOTLY_TEMPLATE,
     TRANSPORT_CONFIG,
     MODE_ORDER,
     COLUMN_LABELS,
@@ -31,6 +34,7 @@ from utils import (
     fetch_route_geometry,
     delay_to_color,
     compute_zoom,
+    styled_kpi,
     download_csv_button,
     entur_footer,
 )
@@ -148,17 +152,17 @@ avg_delay = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
 max_delay = (df["delaySeconds"].max() / 60) if total_n > 0 else 0
 
 with kpi_cols[0]:
-    st.metric("Avganger", f"{total_n:,}".replace(",", " "))
+    styled_kpi("Avganger", f"{total_n:,}".replace(",", " "))
 with kpi_cols[1]:
-    st.metric("Forsinkede", f"{delayed_n:,} ({pct:.0f}%)".replace(",", " "))
+    styled_kpi("Forsinkede", f"{delayed_n:,} ({pct:.0f}%)".replace(",", " "))
 with kpi_cols[2]:
-    st.metric("Snitt forsinkelse", f"{avg_delay:.1f} min")
+    styled_kpi("Snitt forsinkelse", f"{avg_delay:.1f} min")
 with kpi_cols[3]:
-    st.metric("Maks forsinkelse", f"{max_delay:.0f} min")
+    styled_kpi("Maks forsinkelse", f"{max_delay:.0f} min")
 
 
 # ═════════════════════════════════════════════════════════════════
-# DELAY DISTRIBUTION
+# DELAY DISTRIBUTION (Plotly interactive histogram)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -167,39 +171,110 @@ st.subheader("📊 Forsinkelsesfordeling")
 if not df.empty and "delaySeconds" in df.columns:
     delay_min = df["delaySeconds"] / 60
 
-    # Define severity buckets
-    buckets = {
-        "I rute (0 min)":    (delay_min == 0).sum(),
-        "< 1 min":           ((delay_min > 0) & (delay_min < 1)).sum(),
-        "1–5 min":           ((delay_min >= 1) & (delay_min < 5)).sum(),
-        "5–15 min":          ((delay_min >= 5) & (delay_min < 15)).sum(),
-        "15–30 min":         ((delay_min >= 15) & (delay_min < 30)).sum(),
-        "30+ min":           (delay_min >= 30).sum(),
-    }
-
-    dist_left, dist_right = st.columns([1, 2])
+    dist_left, dist_right = st.columns([2, 3])
 
     with dist_left:
+        # Summary stats in styled cards
+        buckets = {
+            "🟢 I rute (0 min)": (delay_min == 0).sum(),
+            "🟢 < 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
+            "🟡 1–5 min": ((delay_min >= 1) & (delay_min < 5)).sum(),
+            "🟠 5–15 min": ((delay_min >= 5) & (delay_min < 15)).sum(),
+            "🔴 15–30 min": ((delay_min >= 15) & (delay_min < 30)).sum(),
+            "🔴 30+ min": (delay_min >= 30).sum(),
+        }
+
         st.markdown("**Antall avganger per forsinkelsesgruppe:**")
-
-        emojis = ["🟢", "🟢", "🟡", "🟠", "🔴", "🔴"]
-        for (label, count), emoji in zip(buckets.items(), emojis):
+        for label, count in buckets.items():
             pct_bucket = (100 * count / total_n) if total_n > 0 else 0
-            st.markdown(f"{emoji} **{label}**: {count:,} ({pct_bucket:.1f}%)")
+            st.markdown(f"{label}: **{count:,}** ({pct_bucket:.1f}%)")
 
-        on_time = buckets["I rute (0 min)"] + buckets["< 1 min"]
+        on_time = list(buckets.values())[0] + list(buckets.values())[1]
         on_time_pct = (100 * on_time / total_n) if total_n > 0 else 0
         st.markdown(f"\n**Punktlighet (< 1 min):** {on_time_pct:.1f}%")
 
     with dist_right:
-        bucket_df = pd.DataFrame(
-            {"Antall avganger": list(buckets.values())},
-            index=list(buckets.keys()),
+        # Interactive Plotly histogram
+        df_hist = df[["delaySeconds"]].copy()
+        df_hist["delayMin"] = df_hist["delaySeconds"] / 60
+
+        # Clamp to 30 min for cleaner visualization
+        df_hist["delayMin_capped"] = df_hist["delayMin"].clip(upper=30)
+
+        fig_hist = px.histogram(
+            df_hist,
+            x="delayMin_capped",
+            nbins=30,
+            template=PLOTLY_TEMPLATE,
+            labels={"delayMin_capped": "Forsinkelse (min)"},
+            color_discrete_sequence=[ACCENT_COLOR],
         )
-        st.bar_chart(bucket_df)
+        fig_hist.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            height=300,
+            xaxis_title="Forsinkelse (min, maks 30)",
+            yaxis_title="Antall avganger",
+            bargap=0.05,
+        )
+        fig_hist.update_traces(
+            hovertemplate="Forsinkelse: %{x:.1f} min<br>Antall: %{y}<extra></extra>"
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
 
 else:
     st.info("Ingen forsinkelsesdata tilgjengelig for å vise fordeling.")
+
+
+# ═════════════════════════════════════════════════════════════════
+# HOURLY DELAY PATTERN
+# ═════════════════════════════════════════════════════════════════
+
+st.markdown("---")
+st.subheader("⏰ Forsinkelse per time (døgnmønster)")
+
+if not df.empty and "scheduledDeparture" in df.columns:
+    df_hourly = df.dropna(subset=["scheduledDeparture"]).copy()
+    df_hourly["hour"] = df_hourly["scheduledDeparture"].dt.hour
+
+    hourly_stats = (
+        df_hourly.groupby("hour")
+        .agg(
+            avgDelay=("delaySeconds", lambda x: x.mean() / 60),
+            count=("isDelayed", "count"),
+        )
+        .reindex(range(24), fill_value=0)
+        .reset_index()
+    )
+    hourly_stats.columns = ["hour", "avgDelay", "count"]
+
+    fig_hourly = px.bar(
+        hourly_stats,
+        x="hour",
+        y="avgDelay",
+        template=PLOTLY_TEMPLATE,
+        labels={"hour": "Time", "avgDelay": "Snitt forsinkelse (min)"},
+        color="avgDelay",
+        color_continuous_scale=DELAY_COLOR_SCALE,
+    )
+    fig_hourly.update_layout(
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=280,
+        xaxis=dict(
+            tickmode="array",
+            tickvals=list(range(24)),
+            ticktext=[f"{h:02d}" for h in range(24)],
+        ),
+        coloraxis_showscale=False,
+        yaxis_title="Snitt forsinkelse (min)",
+        xaxis_title="Time på døgnet",
+    )
+    fig_hourly.update_traces(
+        hovertemplate="<b>Kl %{x}:00</b><br>Snitt: %{y:.1f} min<br>Avganger: %{customdata[0]}<extra></extra>",
+        customdata=hourly_stats[["count"]].values,
+    )
+    st.plotly_chart(fig_hourly, use_container_width=True)
+else:
+    st.info("Ingen data tilgjengelig.")
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -277,13 +352,17 @@ if not df.empty and not df_stations.empty:
                         if (
                             row["name"]
                             and s1_name
-                            and row["name"].lower().startswith(s1_name.lower()[:8])
+                            and row["name"]
+                            .lower()
+                            .startswith(s1_name.lower()[:8])
                         ):
                             s1_delay = row["avgDelay"]
                         if (
                             row["name"]
                             and s2_name
-                            and row["name"].lower().startswith(s2_name.lower()[:8])
+                            and row["name"]
+                            .lower()
+                            .startswith(s2_name.lower()[:8])
                         ):
                             s2_delay = row["avgDelay"]
 
@@ -360,7 +439,7 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Bar charts
+# Bar charts (Plotly interactive, side by side)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -370,16 +449,37 @@ chart_left, chart_right = st.columns(2)
 with chart_left:
     st.subheader("⏱️ Mest forsinkede stasjoner")
     if not df.empty and "delaySeconds" in df.columns:
-        station_chart = (
+        station_stats = (
             df.groupby("stationName")["delaySeconds"]
             .mean()
             .div(60)
-            .sort_values(ascending=False)
-            .head(15)
-            .to_frame(name="Snitt forsinkelse (min)")
+            .sort_values(ascending=True)
+            .tail(10)
+            .reset_index()
         )
-        if not station_chart.empty:
-            st.bar_chart(station_chart)
+        station_stats.columns = ["stationName", "avgDelay"]
+
+        if not station_stats.empty:
+            fig_stations = px.bar(
+                station_stats,
+                y="stationName",
+                x="avgDelay",
+                orientation="h",
+                template=PLOTLY_TEMPLATE,
+                labels={"stationName": "", "avgDelay": "Snitt forsinkelse (min)"},
+                color="avgDelay",
+                color_continuous_scale=DELAY_COLOR_SCALE,
+            )
+            fig_stations.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                height=350,
+                coloraxis_showscale=False,
+                yaxis_title="",
+            )
+            fig_stations.update_traces(
+                hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
+            )
+            st.plotly_chart(fig_stations, use_container_width=True)
         else:
             st.info("Ingen data å vise.")
     else:
@@ -388,16 +488,37 @@ with chart_left:
 with chart_right:
     st.subheader("🚆 Mest forsinkede linjer")
     if not df.empty and "lineName" in df.columns:
-        line_chart = (
+        line_stats = (
             df.groupby("lineName")["delaySeconds"]
             .mean()
             .div(60)
-            .sort_values(ascending=False)
-            .head(15)
-            .to_frame(name="Snitt forsinkelse (min)")
+            .sort_values(ascending=True)
+            .tail(10)
+            .reset_index()
         )
-        if not line_chart.empty:
-            st.bar_chart(line_chart)
+        line_stats.columns = ["lineName", "avgDelay"]
+
+        if not line_stats.empty:
+            fig_lines = px.bar(
+                line_stats,
+                y="lineName",
+                x="avgDelay",
+                orientation="h",
+                template=PLOTLY_TEMPLATE,
+                labels={"lineName": "", "avgDelay": "Snitt forsinkelse (min)"},
+                color="avgDelay",
+                color_continuous_scale=DELAY_COLOR_SCALE,
+            )
+            fig_lines.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                height=350,
+                coloraxis_showscale=False,
+                yaxis_title="",
+            )
+            fig_lines.update_traces(
+                hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
+            )
+            st.plotly_chart(fig_lines, use_container_width=True)
         else:
             st.info("Ingen data å vise.")
     else:
