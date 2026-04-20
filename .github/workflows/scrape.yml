@@ -3,7 +3,7 @@ name: Hourly Entur Scraper
 
 on:
   schedule:
-    - cron: "*/40 * * * *"   # Kjører hver time
+    - cron: "*/45 * * * *"   # Kjører hver time
   workflow_dispatch:
 
 jobs:
