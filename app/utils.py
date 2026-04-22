@@ -1,11 +1,13 @@
 """
 utils.py
 ────────
-Shared helpers for the Togforsinkelser Streamlit app.
+Re-export hub for Togforsinkelser-appen.
 
-Contains data-loading functions, Entur API helpers, color-scale
-utilities, map helpers, transport configuration and the Entur
-credit footer — all in one place so individual pages stay DRY.
+Denne filen importerer og re-eksporterer alle delte funksjoner og konstanter
+fra de nye modulene (data_loader, components), slik at eksisterende
+`from utils import ...`-setninger forblir gyldige.
+
+Ny kode bør importere direkte fra data_loader eller components/.
 """
 
 import os
@@ -16,9 +18,28 @@ import pytz
 import requests
 import streamlit as st
 
-# ─── Constants ────────────────────────────────────────────────────
+# ─── Re-eksporter fra data_loader ─────────────────────────────────
 
-OSLO_TZ = pytz.timezone("Europe/Oslo")
+from data_loader import (
+    OSLO_TZ,
+    project_root,
+    master_csv_path,
+    stations_csv_path,
+    get_mtime,
+    load_delay_data,
+    load_stations,
+    filter_rail_only,
+    get_unique_routes,
+    get_route_traffic_counts,
+)
+
+# ─── Re-eksporter fra components ──────────────────────────────────
+
+from components.kpi import styled_kpi
+from components.footer import entur_footer
+from components.sidebar import render_sidebar_filters, apply_time_filter
+
+# ─── Entur API-konfigurasjon ──────────────────────────────────────
 
 API_URL = "https://api.entur.io/journey-planner/v3/graphql"
 API_HEADERS = {
@@ -26,80 +47,12 @@ API_HEADERS = {
     "Content-Type": "application/json",
 }
 
-TRANSPORT_CONFIG = {
-    "bus":   {"label": "🚌 Buss",           "color": "#2ca02c", "rgb": [44, 160, 44]},
-    "coach": {"label": "🚌 Buss (ekspress)","color": "#2ca02c", "rgb": [44, 160, 44]},
-    "rail":  {"label": "🚆 Tog",            "color": "#1f77b4", "rgb": [31, 119, 180]},
-    "tram":  {"label": "🚋 Trikk",          "color": "#9467bd", "rgb": [148, 103, 189]},
-    "metro": {"label": "🚇 T-bane",         "color": "#ff7f0e", "rgb": [255, 127, 14]},
-    "ferry": {"label": "⛴️ Ferge",          "color": "#17becf", "rgb": [23, 190, 207]},
-    "water": {"label": "⛴️ Båt",            "color": "#17becf", "rgb": [23, 190, 207]},
-    "air":   {"label": "✈️ Fly",            "color": "#d62728", "rgb": [214, 39, 40]},
-    "taxi":  {"label": "🚕 Taxi",           "color": "#e7ba52", "rgb": [231, 186, 82]},
-    "NA":    {"label": "❓ Ukjent",          "color": "#7f7f7f", "rgb": [127, 127, 127]},
-}
-
-MODE_ORDER = ["rail", "metro", "tram", "bus", "coach", "ferry", "water", "air", "taxi", "NA"]
-
-
-# ─── Paths ────────────────────────────────────────────────────────
-
-def project_root():
-    """Return the absolute path to the project root directory."""
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def master_csv_path():
-    return os.path.join(project_root(), "data_collection", "forsinkelser_master.csv")
-
-
-def stations_csv_path():
-    return os.path.join(project_root(), "data_collection", "alle_stasjoner.csv")
-
-
-# ─── Data loading ─────────────────────────────────────────────────
-
-def get_mtime(path):
-    """Return file modification time, or None if the file doesn't exist."""
-    try:
-        if not os.path.exists(path):
-            return None
-        return os.path.getmtime(path)
-    except OSError:
-        return None
-
-
-@st.cache_data
-def load_delay_data(path, _mtime):
-    """Load and parse the master delay CSV."""
-    if _mtime is None or not os.path.exists(path):
-        return pd.DataFrame()
-    df = pd.read_csv(path)
-    if "scheduledDeparture" in df.columns:
-        df["scheduledDeparture"] = pd.to_datetime(
-            df["scheduledDeparture"], utc=True, errors="coerce"
-        )
-        df["scheduledDeparture"] = df["scheduledDeparture"].dt.tz_convert(OSLO_TZ)
-    if "delaySeconds" in df.columns:
-        df["delaySeconds"] = pd.to_numeric(df["delaySeconds"], errors="coerce").fillna(0)
-    if "isDelayed" in df.columns:
-        df["isDelayed"] = pd.to_numeric(df["isDelayed"], errors="coerce").fillna(0).astype(int)
-    return df
-
-
-@st.cache_data
-def load_stations(path):
-    """Load the station registry CSV."""
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    return pd.read_csv(path)
-
 
 # ─── Entur API ────────────────────────────────────────────────────
 
 @st.cache_data(ttl=600)
 def fetch_route_geometry(line_id):
-    """Fetch stop-place coordinates for a line from the Entur API."""
+    """Henter stoppested-koordinater for en linje fra Entur API."""
     query = """
     query ($lineId: ID!) {
       line(id: $lineId) {
@@ -151,10 +104,10 @@ def fetch_route_geometry(line_id):
         return None
 
 
-# ─── Color & map helpers ─────────────────────────────────────────
+# ─── Farge- og karthjelp ─────────────────────────────────────────
 
 def delay_to_color(delay_sec, max_delay_val):
-    """Convert delay in seconds to [R, G, B, A] (green → yellow → red)."""
+    """Konverterer forsinkelse i sekunder til [R, G, B, A] (grønn → gul → rød)."""
     if max_delay_val <= 0:
         return [44, 200, 50, 200]
     ratio = min(max(delay_sec / max_delay_val, 0.0), 1.0)
@@ -170,7 +123,7 @@ def delay_to_color(delay_sec, max_delay_val):
 
 
 def compute_zoom(lat_spread, lng_spread):
-    """Estimate a pydeck zoom level from geographic spread."""
+    """Estimerer pydeck zoom-nivå basert på geografisk spredning."""
     spread = max(lat_spread, lng_spread)
     if spread > 10:
         return 4
@@ -188,11 +141,12 @@ def compute_zoom(lat_spread, lng_spread):
         return 12
 
 
-# ─── Reusable display column config ──────────────────────────────
+# ─── Kolonnevisning ──────────────────────────────────────────────
 
 DISPLAY_COLUMNS = [
     "stationName", "destination", "lineName", "lineCode",
     "transportMode", "scheduledDeparture", "delaySeconds", "isDelayed",
+    "delaySource",
 ]
 
 COLUMN_LABELS = {
@@ -204,14 +158,15 @@ COLUMN_LABELS = {
     "scheduledDeparture": "Planlagt avgang",
     "delaySeconds": "Forsinkelse (s)",
     "isDelayed": "Forsinket",
+    "delaySource": "Datakilde",
     "realtime": "Sanntid",
 }
 
 
-# ─── Download helper ─────────────────────────────────────────────
+# ─── Nedlasting ──────────────────────────────────────────────────
 
 def download_csv_button(df, prefix="togforsinkelser"):
-    """Render a download button for the given DataFrame."""
+    """Rendrer en nedlastingsknapp for gitt DataFrame."""
     if df.empty:
         return
     csv_bytes = df.to_csv(index=False).encode("utf-8")
@@ -224,46 +179,23 @@ def download_csv_button(df, prefix="togforsinkelser"):
     )
 
 
-# ─── Plotly helpers ───────────────────────────────────────────────
+# ─── Plotly-hjelpere ─────────────────────────────────────────────
 
 PLOTLY_TEMPLATE = "plotly_dark"
 
-# Consistent green → yellow → red color scale for all delay charts
+# Grønn → gul → rød fargeskala for forsinkelsesdiagrammer
 DELAY_COLOR_SCALE = [
-    [0.0, "#2ecc71"],   # Green — on time
-    [0.3, "#f1c40f"],   # Yellow — minor
-    [0.6, "#e67e22"],   # Orange — moderate
-    [1.0, "#e74c3c"],   # Red — severe
+    [0.0, "#2ecc71"],   # Grønn — i rute
+    [0.3, "#f1c40f"],   # Gul — mindre forsinkelse
+    [0.6, "#e67e22"],   # Oransje — moderat
+    [1.0, "#e74c3c"],   # Rød — alvorlig
 ]
 
-# Accent color for primary charts (matches theme primaryColor)
+# Aksentfarge for primærdiagrammer (matcher tema-primaryColor)
 ACCENT_COLOR = "#4fc3f7"
 
-# Norwegian weekday names in correct order (Monday first)
+# Norske ukedagsnavn i riktig rekkefølge (mandag først)
 WEEKDAY_NAMES = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"]
 
-
-def styled_kpi(label, value, delta=None, delta_color="normal"):
-    """Render a metric inside a bordered container for visual separation."""
-    with st.container(border=True):
-        st.metric(label, value, delta=delta, delta_color=delta_color)
-
-
-# ─── Entur credit footer ─────────────────────────────────────────
-
-def entur_footer():
-    """Render the standard Entur credit footer."""
-    st.markdown("---")
-    col_logo, col_text = st.columns([1, 5])
-    with col_logo:
-        st.image(
-            "https://upload.wikimedia.org/wikipedia/commons/e/e0/Entur_logo.svg",
-            width=80,
-        )
-    with col_text:
-        st.markdown("**Data gjort tilgjengelig av Entur**")
-        st.caption(
-            "Dataene publiseres under Norsk lisens for offentlige data (NLOD). "
-            "Entur påtar seg intet ansvar for konsekvenser av feil i dataene eller API-systemene."
-        )
-
+# Fargeblindevennlig fargeskala for heatmap
+HEATMAP_COLOR_SCALE = "Viridis"

@@ -1,8 +1,9 @@
 """
 Forsinkelseskart – Interaktivt kart over forsinkelser
 ─────────────────────────────────────────────────────
-Interactive pydeck map with colour-coded stations and route lines,
-Plotly interactive charts, and a full detail table.
+Interaktivt pydeck-kart med fargekodede stasjoner og rutelinjer,
+Plotly interaktive grafer og detaljert tabell.
+Filtrert til kun togdata (rail).
 """
 
 import os
@@ -14,34 +15,38 @@ import pydeck as pdk
 import plotly.express as px
 import streamlit as st
 
-# Ensure the parent app/ directory is on the path so we can import utils
+# Sørg for at app/-mappen er på path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from utils import (
+from data_loader import (
     OSLO_TZ,
-    ACCENT_COLOR,
-    DELAY_COLOR_SCALE,
-    PLOTLY_TEMPLATE,
-    TRANSPORT_CONFIG,
-    MODE_ORDER,
-    COLUMN_LABELS,
-    DISPLAY_COLUMNS,
     load_delay_data,
     load_stations,
     master_csv_path,
     stations_csv_path,
     get_mtime,
+    filter_rail_only,
+)
+from components.kpi import styled_kpi
+from components.footer import entur_footer
+from components.sidebar import render_sidebar_filters
+from components.responsive_css import inject_responsive_css
+from utils import (
+    ACCENT_COLOR,
+    DELAY_COLOR_SCALE,
+    PLOTLY_TEMPLATE,
+    COLUMN_LABELS,
+    DISPLAY_COLUMNS,
     fetch_route_geometry,
     delay_to_color,
     compute_zoom,
-    styled_kpi,
-    download_csv_button,
-    entur_footer,
 )
 
-# ─── Page config ──────────────────────────────────────────────────
+# ─── Sidekonfigurasjon ────────────────────────────────────────────
 
 st.set_page_config(page_title="Forsinkelseskart", page_icon="🗺️", layout="wide")
+
+inject_responsive_css()
 
 st.title("🗺️ Forsinkelseskart")
 st.caption(
@@ -49,7 +54,7 @@ st.caption(
     "Grønn = liten forsinkelse · Gul = moderat · Rød = stor forsinkelse."
 )
 
-# ─── Load data ────────────────────────────────────────────────────
+# ─── Last data ────────────────────────────────────────────────────
 
 MASTER_PATH = master_csv_path()
 STATIONS_PATH = stations_csv_path()
@@ -60,6 +65,9 @@ now_oslo = datetime.now(OSLO_TZ)
 df_all = load_delay_data(MASTER_PATH, master_mtime)
 df_stations = load_stations(STATIONS_PATH)
 
+# Filtrer til kun tog (rail) på datanivå
+df_all = filter_rail_only(df_all)
+
 if df_all.empty:
     st.warning(
         "Ingen forsinkelsesdata funnet ennå. "
@@ -69,78 +77,14 @@ if df_all.empty:
     st.stop()
 
 
-# ─── Sidebar filters ─────────────────────────────────────────────
+# ─── Sidebar-filtre (kun tog) ────────────────────────────────────
 
-st.sidebar.header("🔎 Filtre")
-
-# Time period
-time_options = ["Siste 24 timer", "Siste 7 dager", "Siste 30 dager", "Alle"]
-selected_time = st.sidebar.selectbox(
-    "Tidsperiode", options=time_options, index=2, key="map_time_filter"
+df, selected_route, selected_time = render_sidebar_filters(
+    df_all, page_key="map", now_oslo=now_oslo
 )
 
-df = df_all.copy()
-if "scheduledDeparture" in df.columns:
-    if selected_time == "Siste 24 timer":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(hours=24))]
-    elif selected_time == "Siste 7 dager":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(days=7))]
-    elif selected_time == "Siste 30 dager":
-        df = df[df["scheduledDeparture"] >= (now_oslo - timedelta(days=30))]
 
-# Line filter
-all_lines = (
-    sorted(df["lineName"].dropna().unique().tolist())
-    if "lineName" in df.columns
-    else []
-)
-selected_line = st.sidebar.selectbox(
-    "Velg linje / rute",
-    options=["— Alle ruter —"] + all_lines,
-    index=0,
-    key="map_line_filter",
-)
-if selected_line != "— Alle ruter —":
-    df = df[df["lineName"] == selected_line]
-
-# Station filter
-stations_in_selection = (
-    sorted(df["stationName"].dropna().unique().tolist())
-    if "stationName" in df.columns
-    else []
-)
-selected_station = st.sidebar.selectbox(
-    "Filtrer på stasjon",
-    options=["— Alle stasjoner —"] + stations_in_selection,
-    index=0,
-    key="map_station_filter",
-)
-if selected_station != "— Alle stasjoner —":
-    df = df[df["stationName"] == selected_station]
-
-# Transport mode
-all_modes = (
-    sorted(df["transportMode"].dropna().unique().tolist())
-    if "transportMode" in df.columns
-    else []
-)
-selected_modes = st.sidebar.multiselect(
-    "Transporttype",
-    options=all_modes,
-    default=all_modes,
-    key="map_mode_filter",
-)
-if selected_modes and "transportMode" in df.columns:
-    df = df[df["transportMode"].isin(selected_modes)]
-
-only_delayed = st.sidebar.checkbox(
-    "Vis kun forsinkede", value=False, key="map_only_delayed"
-)
-if only_delayed and "isDelayed" in df.columns:
-    df = df[df["isDelayed"] == 1]
-
-
-# ─── KPIs ─────────────────────────────────────────────────────────
+# ─── KPI-er ──────────────────────────────────────────────────────
 
 st.markdown("---")
 
@@ -162,7 +106,7 @@ with kpi_cols[3]:
 
 
 # ═════════════════════════════════════════════════════════════════
-# DELAY DISTRIBUTION (Plotly interactive histogram)
+# FORSINKELSESFORDELING (Plotly interaktivt histogram)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -174,7 +118,7 @@ if not df.empty and "delaySeconds" in df.columns:
     dist_left, dist_right = st.columns([2, 3])
 
     with dist_left:
-        # Summary stats in styled cards
+        # Statistikk i stiliserte kort
         buckets = {
             "🟢 I rute (0 min)": (delay_min == 0).sum(),
             "🟢 < 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
@@ -194,11 +138,11 @@ if not df.empty and "delaySeconds" in df.columns:
         st.markdown(f"\n**Punktlighet (< 1 min):** {on_time_pct:.1f}%")
 
     with dist_right:
-        # Interactive Plotly histogram
+        # Interaktivt Plotly-histogram
         df_hist = df[["delaySeconds"]].copy()
         df_hist["delayMin"] = df_hist["delaySeconds"] / 60
 
-        # Clamp to 30 min for cleaner visualization
+        # Begrens til 30 min for renere visualisering
         df_hist["delayMin_capped"] = df_hist["delayMin"].clip(upper=30)
 
         fig_hist = px.histogram(
@@ -226,7 +170,7 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# HOURLY DELAY PATTERN
+# FORSINKELSE PER TIME (døgnmønster)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -278,21 +222,21 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# MAP
+# KART
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
 st.subheader("🗺️ Forsinkelseskart")
 
 if not df.empty and not df_stations.empty:
-    # Average delay per station
+    # Snittforsinkelse per stasjon
     station_delays = (
         df.groupby("stationId")
         .agg(avgDelay=("delaySeconds", "mean"), count=("isDelayed", "count"))
         .reset_index()
     )
 
-    # Merge with station coordinates
+    # Koble med stasjonskoordinater
     df_map = station_delays.merge(
         df_stations[["id", "name", "latitude", "longitude"]],
         left_on="stationId",
@@ -312,7 +256,7 @@ if not df.empty and not df_stations.empty:
 
         scatter_data = df_map.to_dict("records")
 
-        # Station scatter layer
+        # Stasjonspunkt-lag
         scatter_layer = pdk.Layer(
             "ScatterplotLayer",
             data=scatter_data,
@@ -326,8 +270,8 @@ if not df.empty and not df_stations.empty:
 
         layers = [scatter_layer]
 
-        # ─── Route lines (when a specific line is selected) ───
-        if selected_line != "— Alle ruter —" and "lineId" in df.columns:
+        # ─── Rutelinjer (når en spesifikk linje er valgt) ───
+        if selected_route is not None and "lineId" in df.columns:
             line_ids = df["lineId"].dropna().unique().tolist()
 
             line_segments = []
@@ -394,7 +338,7 @@ if not df.empty and not df_stations.empty:
                 )
                 layers.insert(0, line_layer)
 
-        # Map center & zoom
+        # Kartsentrum & zoom
         center_lat = df_map["latitude"].mean()
         center_lng = df_map["longitude"].mean()
         lat_spread = df_map["latitude"].max() - df_map["latitude"].min()
@@ -429,7 +373,7 @@ if not df.empty and not df_stations.empty:
         st.pydeck_chart(deck, use_container_width=True)
 
         legend_text = "🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse"
-        if selected_line != "— Alle ruter —":
+        if selected_route is not None:
             legend_text += " · Linjer mellom stopp viser forsinkelse langs ruten"
         st.caption(legend_text)
     else:
@@ -439,7 +383,7 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Bar charts (Plotly interactive, side by side)
+# Stolpediagrammer (Plotly interaktive, side ved side)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -526,7 +470,7 @@ with chart_right:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Detail table
+# Detaljert tabell
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -540,14 +484,6 @@ df_table = df[existing_cols].sort_values("scheduledDeparture", ascending=False)
 df_table = df_table.rename(columns=COLUMN_LABELS)
 
 st.dataframe(df_table, use_container_width=True, hide_index=True)
-
-
-# ═════════════════════════════════════════════════════════════════
-# CSV download
-# ═════════════════════════════════════════════════════════════════
-
-st.markdown("---")
-download_csv_button(df, prefix="forsinkelseskart")
 
 
 # ═════════════════════════════════════════════════════════════════

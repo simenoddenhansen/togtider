@@ -1,8 +1,9 @@
 """
 Togforsinkelser – Hovedside / Dashboard
 ────────────────────────────────────────
-National landing page with styled KPIs, Plotly interactive charts,
-a temporal heatmap (hour × weekday), and trend delta indicators.
+Nasjonal landingsside med KPI-kort, Plotly interaktive grafer,
+tidsheatmap (time × ukedag) med Viridis-fargeskala,
+rutefiltrering, uteliggerdeteksjon og trendindikator.
 """
 
 import os
@@ -26,22 +27,27 @@ except ModuleNotFoundError:
         return None
 
 
-# Local shared helpers
-from utils import (
+# Lokale delte moduler
+from data_loader import (
     OSLO_TZ,
-    ACCENT_COLOR,
-    DELAY_COLOR_SCALE,
-    PLOTLY_TEMPLATE,
-    WEEKDAY_NAMES,
     load_delay_data,
     master_csv_path,
     get_mtime,
-    styled_kpi,
-    download_csv_button,
-    entur_footer,
+    filter_rail_only,
+)
+from components.kpi import styled_kpi
+from components.footer import entur_footer
+from components.sidebar import render_sidebar_filters
+from components.responsive_css import inject_responsive_css
+from utils import (
+    ACCENT_COLOR,
+    DELAY_COLOR_SCALE,
+    HEATMAP_COLOR_SCALE,
+    PLOTLY_TEMPLATE,
+    WEEKDAY_NAMES,
 )
 
-# ─── Page config ──────────────────────────────────────────────────
+# ─── Sidekonfigurasjon ────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Togforsinkelser",
@@ -49,11 +55,13 @@ st.set_page_config(
     layout="wide",
 )
 
-# Auto-refresh every minute for the countdown / fresh data
+inject_responsive_css()
+
+# Auto-refresh hvert minutt for nedtelling / ferske data
 if _HAS_AUTOREFRESH:
     st_autorefresh(interval=60_000, key="countdown-refresh")
 
-# ─── Load data ────────────────────────────────────────────────────
+# ─── Last data ────────────────────────────────────────────────────
 
 MASTER_PATH = master_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
@@ -61,15 +69,18 @@ now_oslo = datetime.now(OSLO_TZ)
 
 df_master = load_delay_data(MASTER_PATH, master_mtime)
 
-# ─── Hero section ─────────────────────────────────────────────────
+# Filtrer til kun tog (rail) på datanivå
+df_master = filter_rail_only(df_master)
+
+# ─── Hero-seksjon ─────────────────────────────────────────────────
 
 st.title("🚆 Togforsinkelser i Norge")
 st.markdown(
-    "Automatisk innsamling av forsinkelsesdata fra norsk kollektivtransport via "
+    "Automatisk innsamling av forsinkelsesdata for **norsk jernbane** via "
     "[Entur](https://entur.no). Dataene oppdateres hver time via GitHub Actions."
 )
 
-# Data freshness & countdown
+# Dataferskhet & nedtelling
 if master_mtime is not None:
     last_updated = datetime.fromtimestamp(master_mtime, tz=OSLO_TZ)
     next_expected = last_updated + timedelta(hours=1)
@@ -105,85 +116,22 @@ if df_master.empty:
     entur_footer()
     st.stop()
 
-# ─── Sidebar filters ─────────────────────────────────────────────
+# ─── Sidebar-filtre (kun tog) ────────────────────────────────────
 
-st.sidebar.header("🔎 Filtre")
-
-# Time period filter
-time_options = ["Siste 24 timer", "Siste 7 dager", "Siste 30 dager", "Alle"]
-selected_time = st.sidebar.selectbox(
-    "Tidsperiode",
-    options=time_options,
-    index=2,
-    key="dash_time_filter",
+df, selected_route, selected_time = render_sidebar_filters(
+    df_master, page_key="dash", now_oslo=now_oslo
 )
 
-df = df_master.copy()
-if "scheduledDeparture" in df.columns:
-    if selected_time == "Siste 24 timer":
-        cutoff = now_oslo - timedelta(hours=24)
-        df = df[df["scheduledDeparture"] >= cutoff]
-    elif selected_time == "Siste 7 dager":
-        cutoff = now_oslo - timedelta(days=7)
-        df = df[df["scheduledDeparture"] >= cutoff]
-    elif selected_time == "Siste 30 dager":
-        cutoff = now_oslo - timedelta(days=30)
-        df = df[df["scheduledDeparture"] >= cutoff]
+# ─── Visningsindikator ───────────────────────────────────────────
 
-# Line filter
-all_lines = (
-    sorted(df["lineName"].dropna().unique().tolist())
-    if "lineName" in df.columns
-    else []
-)
-selected_line = st.sidebar.selectbox(
-    "Velg linje / rute",
-    options=["— Alle ruter —"] + all_lines,
-    index=0,
-    key="dash_line_filter",
-)
-if selected_line != "— Alle ruter —":
-    df = df[df["lineName"] == selected_line]
-
-# Station filter
-all_stations = (
-    sorted(df["stationName"].dropna().unique().tolist())
-    if "stationName" in df.columns
-    else []
-)
-selected_station = st.sidebar.selectbox(
-    "Filtrer på stasjon",
-    options=["— Alle stasjoner —"] + all_stations,
-    index=0,
-    key="dash_station_filter",
-)
-if selected_station != "— Alle stasjoner —":
-    df = df[df["stationName"] == selected_station]
-
-# Transport mode filter
-all_modes = (
-    sorted(df["transportMode"].dropna().unique().tolist())
-    if "transportMode" in df.columns
-    else []
-)
-selected_modes = st.sidebar.multiselect(
-    "Transporttype",
-    options=all_modes,
-    default=all_modes,
-    key="dash_mode_filter",
-)
-if selected_modes and "transportMode" in df.columns:
-    df = df[df["transportMode"].isin(selected_modes)]
-
-only_delayed = st.sidebar.checkbox(
-    "Vis kun forsinkede", value=False, key="dash_only_delayed"
-)
-if only_delayed and "isDelayed" in df.columns:
-    df = df[df["isDelayed"] == 1]
+if selected_route is not None:
+    st.info(f"📍 Viser statistikk for: **{selected_route}**")
+else:
+    st.info("📊 Viser aggregerte tall for **hele tognettet** (alle ruter)")
 
 
 # ═════════════════════════════════════════════════════════════════
-# KPIs with styled cards and delta indicators
+# KPI-er med stiliserte kort og deltaindikatorer
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -194,7 +142,7 @@ pct_delayed = (100 * delayed_n / total_n) if total_n > 0 else 0
 avg_delay_min = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
 punctuality = 100 - pct_delayed
 
-# Compute delta vs. previous equivalent period for context
+# Beregn delta vs. forrige tilsvarende periode for kontekst
 delta_text = None
 if "scheduledDeparture" in df_master.columns and selected_time != "Alle":
     period_map = {
@@ -205,10 +153,16 @@ if "scheduledDeparture" in df_master.columns and selected_time != "Alle":
     period = period_map.get(selected_time, timedelta(days=30))
     prev_start = now_oslo - (period * 2)
     prev_end = now_oslo - period
+
+    # Bruk kun togdata for sammenligning
     df_prev = df_master[
         (df_master["scheduledDeparture"] >= prev_start)
         & (df_master["scheduledDeparture"] < prev_end)
     ]
+    # Filtrer på valgt rute hvis relevant
+    if selected_route is not None and "lineName" in df_prev.columns:
+        df_prev = df_prev[df_prev["lineName"] == selected_route]
+
     if len(df_prev) > 0 and "isDelayed" in df_prev.columns:
         prev_pct = 100 * df_prev["isDelayed"].mean()
         prev_punct = 100 - prev_pct
@@ -236,7 +190,7 @@ with kpi_cols[3]:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Punctuality per time period
+# Punktlighet per tidsperiode
 # ═════════════════════════════════════════════════════════════════
 
 if "scheduledDeparture" in df_master.columns and not df_master.empty:
@@ -251,6 +205,10 @@ if "scheduledDeparture" in df_master.columns and not df_master.empty:
     ]
     for col, (label, delta) in zip(period_cols, periods):
         df_period = df_master[df_master["scheduledDeparture"] >= (now_oslo - delta)]
+        # Filtrer på valgt rute hvis relevant
+        if selected_route is not None and "lineName" in df_period.columns:
+            df_period = df_period[df_period["lineName"] == selected_route]
+
         if len(df_period) > 0 and "isDelayed" in df_period.columns:
             p = 100 * (1 - df_period["isDelayed"].mean())
             emoji = "🟢" if p >= 90 else ("🟡" if p >= 75 else "🔴")
@@ -262,7 +220,7 @@ if "scheduledDeparture" in df_master.columns and not df_master.empty:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Daily delay chart (Plotly interactive)
+# Daglig forsinkelsesdiagram (Plotly interaktivt)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -309,40 +267,96 @@ if not df.empty and "scheduledDeparture" in df.columns:
     )
     st.plotly_chart(fig_daily, use_container_width=True)
 
+    # ─── Daglig statistikk-tabell med uteliggerdeteksjon ─────────
+
     with st.expander("📋 Daglig statistikk (tabell)", expanded=False):
-        daily_display = daily_stats.set_index("date").copy()
-        daily_display.columns = [
+
+        daily_display = daily_stats.copy()
+        daily_display["totalDelayMin"] = daily_display["totalDelayMin"].round(0)
+        daily_display["avgDelayMin"] = daily_display["avgDelayMin"].round(2)
+
+        # ── Uteliggerdeteksjon (IQR-metoden) ──
+        # IQR er robust for skjeve fordelinger (forsinkelsesdata er typisk
+        # høyreskjeve med mange ~0 og noen ekstreme verdier).
+        col_for_outlier = "avgDelayMin"
+        Q1 = daily_display[col_for_outlier].quantile(0.25)
+        Q3 = daily_display[col_for_outlier].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        median_val = daily_display[col_for_outlier].median()
+
+        daily_display["is_outlier"] = (
+            (daily_display[col_for_outlier] < lower_bound)
+            | (daily_display[col_for_outlier] > upper_bound)
+        )
+        daily_display["Uteligger"] = daily_display["is_outlier"].map(
+            {True: "🔴 Uteligger", False: "✅ Normal"}
+        )
+        daily_display["Avvik fra median (min)"] = (
+            daily_display[col_for_outlier] - median_val
+        ).round(2)
+
+        # ── Vis uteligger-seksjon ──
+        outlier_rows = daily_display[daily_display["is_outlier"]]
+
+        if not outlier_rows.empty:
+            st.warning(f"⚠️ **{len(outlier_rows)} dag(er) skjevdeler gjennomsnittet**")
+            st.markdown(
+                "Følgende dager har uvanlig høy eller lav gjennomsnittsforsinkelse "
+                f"(utenfor IQR-grensene: {lower_bound:.1f} – {upper_bound:.1f} min):"
+            )
+
+            outlier_info = outlier_rows[
+                ["date", "avgDelayMin", "Avvik fra median (min)", "departures"]
+            ].copy()
+            outlier_info.columns = [
+                "Dato", "Snitt forsinkelse (min)", "Avvik fra median (min)", "Avganger"
+            ]
+            outlier_info["Dato"] = outlier_info["Dato"].dt.strftime("%Y-%m-%d")
+            st.dataframe(outlier_info, use_container_width=True, hide_index=True)
+        else:
+            st.info("✅ Ingen uteliggere identifisert i denne perioden — forsinkelsene er jevnt fordelt.")
+
+        # ── Vis full tabell ──
+        st.markdown("##### Komplett daglig oversikt")
+        table_display = daily_display[
+            ["date", "totalDelayMin", "avgDelayMin", "departures", "delayed", "Uteligger"]
+        ].copy()
+        table_display.columns = [
+            "Dato",
             "Totale forsinkelsesmin",
             "Snitt forsinkelse (min)",
             "Antall avganger",
             "Antall forsinkede",
+            "Uteligger",
         ]
-        daily_display["Totale forsinkelsesmin"] = daily_display[
-            "Totale forsinkelsesmin"
-        ].round(0)
-        daily_display["Snitt forsinkelse (min)"] = daily_display[
-            "Snitt forsinkelse (min)"
-        ].round(2)
-        st.dataframe(daily_display, use_container_width=True)
+        table_display["Dato"] = table_display["Dato"].dt.strftime("%Y-%m-%d")
+        table_display = table_display.sort_values("Dato", ascending=False)
+        st.dataframe(table_display, use_container_width=True, hide_index=True)
+
 else:
     st.info("Ingen data tilgjengelig for å vise daglig statistikk.")
 
 
 # ═════════════════════════════════════════════════════════════════
-# Temporal heatmap: hour × weekday
+# Tidsheatmap: time × ukedag (Viridis — fargeblindevennlig)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
-st.subheader("🔥 Forsinkelsesmønster — ukedag × time")
+route_label = selected_route if selected_route else "Alle ruter (aggregert)"
+st.subheader(f"🔥 Forsinkelsesmønster — ukedag × time")
 st.caption(
-    "Heatmap som viser gjennomsnittlig forsinkelse per ukedag og time. "
-    "Hjelper deg å identifisere rushtid-mønstre og problematiske perioder."
+    f"Viser: **{route_label}** · "
+    "Heatmap med gjennomsnittlig forsinkelse per ukedag og time. "
+    "Hjelper deg å identifisere rushtid-mønstre og problematiske perioder. "
+    "Fargeskala: Viridis (fargeblindevennlig)."
 )
 
 if not df.empty and "scheduledDeparture" in df.columns:
     df_heat = df.dropna(subset=["scheduledDeparture"]).copy()
     df_heat["hour"] = df_heat["scheduledDeparture"].dt.hour
-    df_heat["weekday"] = df_heat["scheduledDeparture"].dt.weekday  # 0=Mon
+    df_heat["weekday"] = df_heat["scheduledDeparture"].dt.weekday  # 0=Man
 
     heat_agg = (
         df_heat.groupby(["weekday", "hour"])["delaySeconds"]
@@ -352,18 +366,18 @@ if not df.empty and "scheduledDeparture" in df.columns:
     )
     heat_agg.columns = ["weekday", "hour", "avgDelayMin"]
 
-    # Create a full 7×24 matrix
+    # Opprett en full 7×24 matrise
     heat_pivot = heat_agg.pivot(index="weekday", columns="hour", values="avgDelayMin")
     heat_pivot = heat_pivot.reindex(index=range(7), columns=range(24), fill_value=0)
 
-    # Cap at 15 min for color clarity
+    # Begrens til 15 min for fargeklarthet
     heat_values = heat_pivot.values.clip(0, 15)
 
     fig_heat = px.imshow(
         heat_values,
         x=[f"{h:02d}:00" for h in range(24)],
         y=WEEKDAY_NAMES,
-        color_continuous_scale=DELAY_COLOR_SCALE,
+        color_continuous_scale=HEATMAP_COLOR_SCALE,
         zmin=0,
         zmax=15,
         labels={"x": "Time", "y": "Ukedag", "color": "Snitt forsinkelse (min)"},
@@ -388,7 +402,7 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# Worst-performing lines (Plotly horizontal bar)
+# Mest forsinkede linjer (Plotly horisontalt stolpediagram)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
@@ -449,13 +463,20 @@ else:
 
 
 # ═════════════════════════════════════════════════════════════════
-# CSV download
+# Nedlastingslenke (navigerer til dedikert side)
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
 st.subheader("📥 Last ned data")
-st.caption("Last ned det filtrerte datasettet som CSV for videre analyse.")
-download_csv_button(df, prefix="togforsinkelser_dashboard")
+st.caption(
+    "Bruk den dedikerte nedlastingssiden for å velge kolonner, "
+    "tidsperiode, ruter og filformat."
+)
+st.page_link(
+    "pages/3_📥_Last_ned_data.py",
+    label="📥 Gå til nedlastingssiden",
+    icon="📥",
+)
 
 
 # ═════════════════════════════════════════════════════════════════
