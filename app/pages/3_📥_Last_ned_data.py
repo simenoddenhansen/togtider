@@ -30,7 +30,7 @@ from components.footer import entur_footer
 from components.responsive_css import inject_responsive_css
 
 # ─── Norske kolonnenavn med API-variabel i parentes ───────────────
-# Komplett mapping for alle kolonner i forsinkelser_master.csv
+# Komplett mapping for alle kolonner i forsinkelseshistorikken
 
 COLUMN_LABELS_FULL = {
     "stationId": "Stasjons-ID (stationId)",

@@ -39,6 +39,7 @@ from components.kpi import styled_kpi
 from components.footer import entur_footer
 from components.sidebar import render_sidebar_filters
 from components.responsive_css import inject_responsive_css
+from schedule_utils import SCRAPE_INTERVAL_MINUTES, get_next_scheduled_update
 from utils import (
     ACCENT_COLOR,
     DELAY_COLOR_SCALE,
@@ -77,13 +78,14 @@ df_master = filter_rail_only(df_master)
 st.title("🚆 Togforsinkelser i Norge")
 st.markdown(
     "Automatisk innsamling av forsinkelsesdata for **norsk jernbane** via "
-    "[Entur](https://entur.no). Dataene oppdateres hver time via GitHub Actions."
+    "[Entur](https://entur.no). Dataene oppdateres omtrent hvert "
+    f"**{SCRAPE_INTERVAL_MINUTES}. minutt** via GitHub Actions."
 )
 
 # Dataferskhet & nedtelling
 if master_mtime is not None:
     last_updated = datetime.fromtimestamp(master_mtime, tz=OSLO_TZ)
-    next_expected = last_updated + timedelta(hours=1)
+    next_expected = get_next_scheduled_update(last_updated)
     seconds_left = int((next_expected - now_oslo).total_seconds())
 
     remaining = max(0, seconds_left)
@@ -103,7 +105,7 @@ if master_mtime is not None:
         )
     with status_cols[1]:
         label = (
-            "Tid til neste forventede oppdatering"
+            "Tid til neste planlagte oppdatering"
             if seconds_left >= 0
             else "Forventet oppdatering (forsinket)"
         )

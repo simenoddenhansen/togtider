@@ -8,9 +8,8 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# Querien henter alle linjer (ruter) fra Entur API. Vi inkluderer transportMode, operator, name, og publicCode
-# We include transportMode, operator, name, and publicCode which are very
-# useful for the train data context.
+# Spørringen henter alle linjer (ruter) fra Entur API. Vi inkluderer transportMode, 
+# operator, name og publicCode, som er svært nyttig informasjon i togdata-sammenheng.
 query = """
 query {
   lines {

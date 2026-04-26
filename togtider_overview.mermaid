@@ -1,0 +1,114 @@
+graph TB
+    %% ==== External data sources ====
+    subgraph EXT["🌐 Eksterne datakilder"]
+        VY["Vy / Bane NOR<br/>(sanntidsdata, ruter, stasjoner)"]
+    end
+
+    %% ==== Scrapers / data collection ====
+    subgraph SCRAPE["🕷️ Data-innsamling (scrapere)"]
+        SC1["data_collection/<br/><b>forsinkelser_scraper.py</b><br/><i>henter forsinkelser</i>"]
+        SC2["data_collection/<br/><b>hent_alle_stasjoner.py</b><br/><i>henter stasjonsliste</i>"]
+        SC3["ruteData/<br/><b>hent_alle_ruter.py</b><br/><i>henter alle ruter</i>"]
+        SC4["reiser_oslo_sandvika/<br/><b>vy_scraper.py</b><br/><i>reiser Oslo S ↔ Sandvika</i>"]
+    end
+
+    %% ==== Data storage (CSV) ====
+    subgraph DATA["💾 Datalager (CSV-filer)"]
+        D1[("forsinkelser_master.csv<br/>forsinkelser_siste_kjoring.csv")]
+        D2[("alle_stasjoner.csv")]
+        D3[("Alle ruter.csv")]
+        D4[("Alle_reiser_Oslo_Sandvika.csv<br/>OsloS_til_Sandvika_reiser_siste_timen.csv")]
+    end
+
+    %% ==== Streamlit app ====
+    subgraph APP["🖥️ Streamlit-app (app/)"]
+        ENTRY["<b>Togforsinkelser.py</b><br/>hovedside / entry"]
+
+        subgraph PAGES["📄 Sider (multi-page)"]
+            P1["1 🗺️ Forsinkelseskart<br/><i>kart m/ forsinkelser</i>"]
+            P2["2 🚆 Søk Reise<br/><i>søk avganger/reiser</i>"]
+            P3["3 📥 Last ned data<br/><i>eksport av CSV</i>"]
+        end
+
+        subgraph SHARED["🧩 Delte moduler"]
+            DL["data_loader.py<br/><i>leser CSV → DataFrames</i>"]
+            UT["utils.py<br/><i>hjelpefunksjoner</i>"]
+        end
+
+        subgraph COMP["🎨 Komponenter"]
+            C1["sidebar.py"]
+            C2["kpi.py"]
+            C3["footer.py"]
+            C4["responsive_css.py"]
+        end
+
+        CFG[".streamlit/config.toml<br/><i>tema / server-config</i>"]
+    end
+
+    %% ==== Infra ====
+    subgraph INFRA["⚙️ Infrastruktur"]
+        REQ["requirements.txt"]
+        DEV[".devcontainer/"]
+        GHA[".github/ (CI/CD?)"]
+        LOG["streamlit.log"]
+    end
+
+    %% ==== User ====
+    USER(["👤 Bruker"])
+
+    %% ==== Flows ====
+    VY -->|"scraping"| SC1
+    VY -->|"scraping"| SC2
+    VY -->|"scraping"| SC3
+    VY -->|"scraping"| SC4
+
+    SC1 --> D1
+    SC2 --> D2
+    SC3 --> D3
+    SC4 --> D4
+
+    D1 --> DL
+    D2 --> DL
+    D3 --> DL
+    D4 --> DL
+
+    ENTRY --> PAGES
+    DL --> P1
+    DL --> P2
+    DL --> P3
+    UT --> P1
+    UT --> P2
+    UT --> P3
+
+    COMP --> ENTRY
+    COMP --> P1
+    COMP --> P2
+    COMP --> P3
+    CFG -.konfig.-> ENTRY
+
+    USER -->|"nettleser"| ENTRY
+    P3 -->|"CSV-nedlasting"| USER
+
+    REQ -.avhengigheter.-> APP
+    DEV -.dev-miljø.-> APP
+    GHA -.automatisering.-> SCRAPE
+    ENTRY -.logging.-> LOG
+
+    %% ==== Styling ====
+    classDef ext fill:#fde68a,stroke:#b45309,color:#000
+    classDef scrape fill:#fecaca,stroke:#b91c1c,color:#000
+    classDef data fill:#bbf7d0,stroke:#15803d,color:#000
+    classDef app fill:#bfdbfe,stroke:#1d4ed8,color:#000
+    classDef shared fill:#e9d5ff,stroke:#7e22ce,color:#000
+    classDef comp fill:#fbcfe8,stroke:#be185d,color:#000
+    classDef infra fill:#e5e7eb,stroke:#374151,color:#000
+    classDef user fill:#fff,stroke:#000,stroke-width:2px,color:#000
+
+    class VY ext
+    class SC1,SC2,SC3,SC4 scrape
+    class D1,D2,D3,D4 data
+    class ENTRY,P1,P2,P3,CFG app
+    class DL,UT shared
+    class C1,C2,C3,C4 comp
+    class REQ,DEV,GHA,LOG infra
+    class USER user

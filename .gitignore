@@ -21,3 +21,6 @@ __pycache__/
 *.log
 streamlit.log
 output.html
+
+# Local-only tests
+local_tests/

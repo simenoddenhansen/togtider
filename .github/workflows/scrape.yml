@@ -1,9 +1,13 @@
-name: Hourly Entur Scraper
+name: Entur Scraper Every 40 Minutes
 
 
 on:
   schedule:
-    - cron: "*/45 * * * *"   # Kjører hver time
+    # GitHub cron cannot express "every 40 minutes" with a single rule.
+    # These two rules create an exact 40-minute cadence:
+    # 00:00, 00:40, 01:20, 02:00, 02:40, 03:20, ...
+    - cron: "0,40 0-23/2 * * *"
+    - cron: "20 1-23/2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -37,6 +41,10 @@ jobs:
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
-          git add reiser_oslo_sandvika/*.csv ruteData/*.csv data_collection/*.csv
+          git add reiser_oslo_sandvika
+          git add ruteData
+          git add data_collection/alle_stasjoner.csv
+          git add data_collection/forsinkelser_siste_kjoring.csv
+          git add data_collection/history
           git commit -m "Automatisk oppdatering av togtider" || echo "Ingen endringer å lagre"
           git push

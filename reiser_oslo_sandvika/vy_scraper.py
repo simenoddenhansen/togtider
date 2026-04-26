@@ -75,8 +75,8 @@ def timeout_handler(signum, frame):
 signal.signal(signal.SIGALRM, timeout_handler)
 signal.alarm(600)  # 10 min
 
-# Parse as JSON - Dette er vår behandling av de dataene vi har bedt om fra
-# API-kallet.
+# Konverterer responsen til JSON - dette er vår håndtering av dataene vi
+# har mottatt fra API-kallet.
 try:
     response = requests.post(
         url,
@@ -173,12 +173,12 @@ try:
         "OsloS_til_Sandvika_reiser_siste_timen.csv")
     masterfil = os.path.join(script_dir, "Alle_reiser_Oslo_Sandvika.csv")
 
-    # Always write the last-hour file (even if empty) to keep the schema
-    # consistent
+    # Skriv alltid timens fil (selv om den er tom) for å bevare strukturen
+    # på datasettet
     df_new.to_csv(kildefil, index=False)
 
-    # Master-file update with schema migration (preserve old rows and add new
-    # columns as NA)
+    # Oppdatering av hovedfilen med håndtering av nye kolonner (beholder
+    # eksisterende rader og fyller inn manglende data som NA)
     if os.path.exists(masterfil):
         df_master = pd.read_csv(masterfil)
         df_master = df_master.loc[:,
@@ -186,7 +186,7 @@ try:
     else:
         df_master = pd.DataFrame()
 
-    # Add missing columns to both frames
+    # Sørg for at begge datasett har de samme kolonnene
     for col in expected_columns:
         if col not in df_master.columns:
             df_master[col] = pd.NA
@@ -206,7 +206,8 @@ try:
 
     df_all = pd.concat([df_master, df_new], ignore_index=True)
 
-    # De-dupe (keep first seen) while avoiding accidental drops when IDs exist
+    # Fjern duplikater (behold første treff) og sikre at vi ikke mister
+    # rader ved et uhell når ID-er finnes
     dedupe_keys = ["scheduledDeparture", "destination"]
     for extra_key in ["routeId", "serviceJourneyId"]:
         if extra_key in df_all.columns:

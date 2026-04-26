@@ -1,9 +1,9 @@
 """
 Søk Reise – Finn neste reise med punktlighetsindikator
 ───────────────────────────────────────────────────────
-Journey search page using the Entur Journey Planner API.
-Now also shows historical punctuality badges per line,
-based on the locally collected delay data.
+Reisesøk basert på Entur Journey Planner API.
+Viser også historisk punktlighet per linje ved hjelp av
+lokalt innsamlede forsinkelsesdata.
 """
 
 import datetime
@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 import requests
 
-# Ensure the parent app/ directory is on the path so we can import utils
+# Sørger for at app-mappen er i stien slik at utils-modulen kan importeres
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from utils import (
@@ -35,7 +35,7 @@ st.markdown("Søk etter reiser i hele Norge, direkte fra Entur.")
 GEOCODER_API_URL = "https://api.entur.io/geocoder/v1/autocomplete"
 JOURNEY_API_URL = "https://api.entur.io/journey-planner/v3/graphql"
 
-# --- Transport mode icons and labels ---
+# --- Ikoner og visningsnavn for transportmidler ---
 MODE_ICONS = {
     "bus":    "🚌",
     "rail":   "🚆",
@@ -79,7 +79,7 @@ MODE_NO = {
 }
 
 
-# ─── Load historical delay data for punctuality badges ────────────
+# ─── Laster inn historiske forsinkelsesdata for punktlighetsvisning ─
 
 MASTER_PATH = master_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
@@ -88,7 +88,7 @@ df_delays = load_delay_data(MASTER_PATH, master_mtime)
 
 @st.cache_data
 def get_line_punctuality(_df_hash, line_name):
-    """Return punctuality % for a given line name, or None if unknown."""
+    """Returnerer punktlighet i prosent for en gitt linje, eller None hvis data mangler."""
     if df_delays.empty or "lineName" not in df_delays.columns:
         return None
     df_line = df_delays[df_delays["lineName"] == line_name]
@@ -97,10 +97,10 @@ def get_line_punctuality(_df_hash, line_name):
     return 100 * (1 - df_line["isDelayed"].mean())
 
 
-# ─── Helpers ──────────────────────────────────────────────────────
+# ─── Hjelpefunksjoner ─────────────────────────────────────────────
 
 def parse_transport_icons(feature_props: dict) -> str:
-    """Extract unique transport mode icons from an Entur geocoder feature."""
+    """Henter ut unike transportikoner fra et Entur geocoder-svar."""
     icons_seen = set()
     icons_list = []
 
@@ -126,8 +126,8 @@ def parse_transport_icons(feature_props: dict) -> str:
 @st.cache_data(ttl=60)
 def get_station_suggestions(query_text: str):
     """
-    Returns a list of dicts: {label, id, icons}
-    One entry per unique stop from the Entur geocoder.
+    Returnerer en liste med ordbøker: {label, id, icons}
+    Inneholder én oppføring per unike stoppested fra Entur geocoder.
     """
     if not query_text or len(query_text.strip()) < 2:
         return []
@@ -218,14 +218,14 @@ def fetch_journeys(from_id: str, to_id: str):
         return None
 
 
-# ─── Autocomplete widget ─────────────────────────────────────────
+# ─── Autocomplete-søkefelt ───────────────────────────────────────
 
 def station_autocomplete(
     label: str, key: str, default_value: str = ""
 ) -> Tuple[Optional[str], Optional[str]]:
     """
-    Renders a text input with a live suggestion dropdown beneath it.
-    Returns (selected_label, selected_id) or (None, None) if nothing chosen.
+    Tegner et tekstfelt for søk med en tilhørende nedtrekksmeny for forslag.
+    Returnerer (valgt_navn, valgt_id) eller (None, None) hvis ingenting er valgt.
     """
     input_key = f"{key}_input"
     chosen_key = f"{key}_chosen_label"
@@ -285,7 +285,7 @@ def station_autocomplete(
     return None, None
 
 
-# ─── UI Layout ────────────────────────────────────────────────────
+# ─── Sideoppsett og layout ────────────────────────────────────────
 
 st.markdown("### 1. Velg stasjoner")
 
@@ -303,7 +303,7 @@ with col2:
 
 st.markdown("---")
 
-# ─── Journey search ──────────────────────────────────────────────
+# ─── Utføring av reisesøk ─────────────────────────────────────────
 
 if st.button("Søk etter reiser 🔍", type="primary"):
     if not from_id or not to_id:
@@ -374,9 +374,9 @@ if st.button("Søk etter reiser 🔍", type="primary"):
                                         f"{from_name} ➡️ {to_name}"
                                     )
 
-                                    # ─── Punctuality badge ───
+                                    # ─── Punktlighetsindikator ───
                                     if line_name:
-                                        # Use a simple hash of the delay df length for caching
+                                        # Bruker antall rader i datasettet som en enkel cache-nøkkel
                                         df_hash = len(df_delays)
                                         punct = get_line_punctuality(
                                             df_hash, line_name
