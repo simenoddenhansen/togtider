@@ -1,0 +1,2 @@
+stationId,stationName,scheduledDeparture,expectedDeparture,actualDeparture,delaySeconds,isDelayed,destination,lineId,lineName,lineCode,transportMode,serviceJourneyId,realtime,delaySource,cancellation,situationSummary,situationDescription,situationReportType,situationSeverity,scrapedAt
+NSR:StopPlace:58924,Bryne stasjon,2026-04-29T00:02:00+02:00,2026-04-28T00:02:10+02:00,,-86390.0,0,Lyefjell,KOL:Line:8_2017,50,50,bus,KOL:ServiceJourney:2017_250619122706332_2035,True,expected,False,,,,,2026-04-27T23:10:37.899485+02:00
