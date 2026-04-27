@@ -25,6 +25,9 @@ output.html
 # Local-only tests
 local_tests/
 
+# Local-only planlegging / forbedringsnotater (ikke for offentlig repo)
+improvements/
+
 # Scraper snapshot (regenerated every run; daily history files in
 # data_collection/history/ are the authoritative store)
 data_collection/forsinkelser_siste_kjoring.csv
