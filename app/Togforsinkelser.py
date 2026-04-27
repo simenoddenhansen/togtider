@@ -33,6 +33,7 @@ from data_loader import (
     load_delay_data,
     master_csv_path,
     get_mtime,
+    get_last_scraped_at,
     filter_rail_only,
 )
 from components.kpi import styled_kpi
@@ -84,7 +85,8 @@ st.markdown(
 
 # Dataferskhet & nedtelling
 if master_mtime is not None:
-    last_updated = datetime.fromtimestamp(master_mtime, tz=OSLO_TZ)
+    last_scraped_at = get_last_scraped_at(MASTER_PATH)
+    last_updated = last_scraped_at or datetime.fromtimestamp(master_mtime, tz=OSLO_TZ)
     next_expected = get_next_scheduled_update(last_updated)
     seconds_left = int((next_expected - now_oslo).total_seconds())
 

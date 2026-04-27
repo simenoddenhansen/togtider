@@ -14,6 +14,7 @@ Kjør: python data_collection/forsinkelser_scraper.py [--modes rail,metro,tram]
 """
 
 import argparse
+import json
 import os
 import signal
 import sys
@@ -59,6 +60,11 @@ EXPECTED_COLUMNS = [
     "serviceJourneyId",
     "realtime",
     "delaySource",
+    "cancellation",
+    "situationSummary",
+    "situationDescription",
+    "situationReportType",
+    "situationSeverity",
     "scrapedAt",
 ]
 
@@ -78,6 +84,14 @@ ESTIMATED_CALL_FIELDS = """
                 transportMode
             }
         }
+    }
+    cancellation
+    situations {
+        situationNumber
+        reportType
+        severity
+        summary { language value }
+        description { language value }
     }
 """
 
@@ -253,6 +267,27 @@ def parse_calls(stop_data, scraped_at):
         sj_id = sj.get("id", "")
         jp = sj.get("journeyPattern") or {}
         line = jp.get("line") or {}
+        cancellation = call.get("cancellation", False)
+
+        situations = call.get("situations") or sj.get("situations") or []
+        sit_summaries = []
+        sit_descriptions = []
+        sit_report_types = []
+        sit_severities = []
+        
+        for sit in situations:
+            for summary in sit.get("summary", []):
+                if summary.get("language") in ["no", None] and summary.get("value"):
+                    sit_summaries.append(summary["value"])
+                    break
+            for desc in sit.get("description", []):
+                if desc.get("language") in ["no", None] and desc.get("value"):
+                    sit_descriptions.append(desc["value"])
+                    break
+            if sit.get("reportType"):
+                sit_report_types.append(sit["reportType"])
+            if sit.get("severity"):
+                sit_severities.append(sit["severity"])
 
         delay_seconds = 0.0
         delay_source = "planned"
@@ -288,6 +323,11 @@ def parse_calls(stop_data, scraped_at):
                 "serviceJourneyId": sj_id,
                 "realtime": call.get("realtime", False),
                 "delaySource": delay_source,
+                "cancellation": cancellation,
+                "situationSummary": " | ".join(sit_summaries) if sit_summaries else "",
+                "situationDescription": " | ".join(sit_descriptions) if sit_descriptions else "",
+                "situationReportType": " | ".join(sit_report_types) if sit_report_types else "",
+                "situationSeverity": " | ".join(sit_severities) if sit_severities else "",
                 "scrapedAt": scraped_at,
             }
         )
@@ -298,6 +338,7 @@ def parse_calls(stop_data, scraped_at):
 def fetch_delays(station_ids, start_time_str, time_range, scraped_at):
     """Henter forsinkelsesdata for alle stasjoner med batch-queries."""
     all_rows = []
+    failed_batches = 0
     total_batches = (len(station_ids) + BATCH_SIZE - 1) // BATCH_SIZE
 
     for batch_idx in range(total_batches):
@@ -318,6 +359,7 @@ def fetch_delays(station_ids, start_time_str, time_range, scraped_at):
 
             if "errors" in data:
                 print(f"Batch {batch_idx + 1}: GraphQL-feil: {data['errors'][:2]}")
+                failed_batches += 1
 
             result = data.get("data", {})
             for i in range(len(batch)):
@@ -326,6 +368,7 @@ def fetch_delays(station_ids, start_time_str, time_range, scraped_at):
                     all_rows.extend(parse_calls(stop_data, scraped_at))
         except requests.RequestException as e:
             print(f"Batch {batch_idx + 1}/{total_batches}: Nettverksfeil: {e}")
+            failed_batches += 1
 
         if batch_idx < total_batches - 1:
             time.sleep(SLEEP_BETWEEN)
@@ -336,24 +379,25 @@ def fetch_delays(station_ids, start_time_str, time_range, scraped_at):
                 f"{len(all_rows)} avganger samlet inn."
             )
 
-    return all_rows
+    return all_rows, total_batches, failed_batches
 
 
 def smart_dedup(df_all, dedupe_keys):
-    """Beholder den beste raden per unik avgang."""
+    """Beholder den beste raden per unik avgang — prioriterer hoeyest observert forsinkelse."""
     before = len(df_all)
 
     df_all["_has_actual"] = df_all["actualDeparture"].notna() & (
         df_all["actualDeparture"] != ""
     )
     df_all["_is_realtime"] = df_all["realtime"].astype(str).str.lower() == "true"
+    df_all["_abs_delay"] = pd.to_numeric(df_all["delaySeconds"], errors="coerce").fillna(0).abs()
 
     df_all = df_all.sort_values(
-        by=["_has_actual", "_is_realtime", "scrapedAt"],
-        ascending=[False, False, False],
+        by=["_has_actual", "_is_realtime", "_abs_delay", "scrapedAt"],
+        ascending=[False, False, False, False],
     )
     df_all = df_all.drop_duplicates(subset=dedupe_keys, keep="first")
-    df_all = df_all.drop(columns=["_has_actual", "_is_realtime"])
+    df_all = df_all.drop(columns=["_has_actual", "_is_realtime", "_abs_delay"])
 
     after = len(df_all)
     print(f"Smart dedup: {before} -> {after} rader ({before - after} duplikater fjernet)")
@@ -453,8 +497,25 @@ def main():
     )
 
     t0 = time.time()
-    rows = fetch_delays(station_ids, start_time_str, time_range, scraped_at)
+    rows, total_batches, failed_batches = fetch_delays(station_ids, start_time_str, time_range, scraped_at)
     elapsed = time.time() - t0
+    
+    completeness = (total_batches - failed_batches) / total_batches if total_batches > 0 else 0
+    if completeness < 0.8:
+        print(f"\nADVARSEL: Ufullstendig kjoering! {failed_batches} av {total_batches} batcher feilet.")
+        
+    metadata = {
+        "scrapedAt": scraped_at,
+        "totalBatches": total_batches,
+        "failedBatches": failed_batches,
+        "totalRows": len(rows),
+        "completenessRatio": round(completeness, 3)
+    }
+    metadata_path = os.path.join(history_dir_path(script_dir), "run_metadata.jsonl")
+    ensure_history_dir(script_dir)
+    with open(metadata_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(metadata) + "\n")
+
     print(f"\nFerdig! {len(rows)} avganger samlet inn pa {elapsed:.1f}s.")
 
     if not rows:

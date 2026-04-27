@@ -105,6 +105,27 @@ def get_mtime(path):
         return None
 
 
+def get_last_scraped_at(path=None):
+    """Returnerer siste scrapedAt-tidspunkt fra nyeste fil, eller None."""
+    files = list_delay_data_files(path)
+    if not files:
+        return None
+
+    # De nyeste filene ligger sist
+    for file_path in reversed(files):
+        try:
+            df = pd.read_csv(file_path, usecols=["scrapedAt"], low_memory=False)
+            if df.empty:
+                continue
+            last_ts = pd.to_datetime(df["scrapedAt"], utc=True, errors="coerce").max()
+            if not pd.isna(last_ts):
+                return last_ts.astimezone(OSLO_TZ)
+        except Exception:
+            continue
+            
+    return None
+
+
 def _archive_url(*parts):
     """Bygger en URL under arkiv-basen, eller returnerer None hvis ikke konfigurert."""
     base = archive_base_url()
