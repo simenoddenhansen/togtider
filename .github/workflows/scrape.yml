@@ -48,3 +48,48 @@ jobs:
           git add data_collection/history
           git commit -m "Automatisk oppdatering av togtider" || echo "Ingen endringer å lagre"
           git push
+
+      - name: Arkiver historikk eldre enn 30 dager
+        env:
+          RETENTION_DAYS: 30
+        run: |
+          set -e
+
+          # Sjekk ut gh-pages som worktree. Hvis branchen ikke finnes på remote,
+          # opprett den som tom orphan-branch slik at første arkivering virker.
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add /tmp/archive gh-pages
+          else
+            git worktree add --detach /tmp/archive
+            cd /tmp/archive
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+            cd "$GITHUB_WORKSPACE"
+          fi
+
+          python data_collection/archive_old_history.py \
+            --history-dir data_collection/history \
+            --archive-dir /tmp/archive \
+            --retention-days "$RETENTION_DAYS"
+
+          # Commit og push arkivendringer (gh-pages)
+          cd /tmp/archive
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Arkiverer historikk eldre enn $RETENTION_DAYS dager"
+            git push origin gh-pages
+          else
+            echo "Ingen nye arkivfiler å pushe."
+          fi
+          cd "$GITHUB_WORKSPACE"
+          git worktree remove /tmp/archive --force
+
+          # Commit og push sletting fra main
+          if ! git diff --quiet -- data_collection/history; then
+            git add data_collection/history
+            git commit -m "Fjerner arkiverte historikkfiler eldre enn $RETENTION_DAYS dager"
+            git push
+          else
+            echo "Ingen lokale historikkfiler ble fjernet."
+          fi

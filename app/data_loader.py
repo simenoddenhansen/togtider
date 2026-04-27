@@ -7,7 +7,12 @@ Inneholder funksjoner for å lese forsinkelsesdata fra daglige CSV-filer,
 filtrere på transporttype, og tilby hjelpefunksjoner for rute- og trafikkdata.
 """
 
+import io
+import json
 import os
+from datetime import date, datetime, timedelta
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import pytz
@@ -17,6 +22,8 @@ OSLO_TZ = pytz.timezone("Europe/Oslo")
 HISTORY_DIRNAME = "history"
 LEGACY_MASTER_FILENAME = "forsinkelser_master.csv"
 ARCHIVE_BASE_URL_ENV = "TOGTIDER_ARCHIVE_BASE_URL"
+ARCHIVE_INDEX_FILENAME = "archive_index.json"
+ARCHIVE_FETCH_TIMEOUT = 15
 
 
 def project_root():
@@ -96,6 +103,175 @@ def get_mtime(path):
         return max(os.path.getmtime(file_path) for file_path in files)
     except OSError:
         return None
+
+
+def _archive_url(*parts):
+    """Bygger en URL under arkiv-basen, eller returnerer None hvis ikke konfigurert."""
+    base = archive_base_url()
+    if not base:
+        return None
+    return "/".join([base, *parts])
+
+
+def _http_get_bytes(url):
+    """Henter rå bytes fra en URL. Returnerer None ved 404 eller nettverksfeil."""
+    try:
+        request = Request(url, headers={"User-Agent": "togtider-app"})
+        with urlopen(request, timeout=ARCHIVE_FETCH_TIMEOUT) as response:
+            return response.read()
+    except HTTPError as e:
+        if e.code == 404:
+            return None
+        st.warning(f"Kunne ikke hente {url}: HTTP {e.code}")
+        return None
+    except URLError as e:
+        st.warning(f"Nettverksfeil mot arkivet ({url}): {e.reason}")
+        return None
+
+
+@st.cache_data(ttl=300)
+def load_archive_index():
+    """
+    Henter arkivindeksen fra fjernarkivet. Returnerer en dict med 'days'-liste,
+    eller en tom dict hvis arkivet ikke er konfigurert eller utilgjengelig.
+    """
+    url = _archive_url(ARCHIVE_INDEX_FILENAME)
+    if url is None:
+        return {}
+
+    payload = _http_get_bytes(url)
+    if payload is None:
+        return {}
+
+    try:
+        return json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        st.warning(f"Klarte ikke å tolke arkivindeks: {e}")
+        return {}
+
+
+@st.cache_data(ttl=3600)
+def fetch_archived_day(day_key):
+    """
+    Henter én arkivert daglig CSV (YYYY-MM-DD) over HTTPS og returnerer
+    en normalisert DataFrame. Returnerer tom DataFrame hvis filen ikke finnes.
+    """
+    url = _archive_url(f"forsinkelser_{day_key}.csv")
+    if url is None:
+        return pd.DataFrame()
+
+    payload = _http_get_bytes(url)
+    if payload is None:
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(io.BytesIO(payload), low_memory=False)
+    except Exception as e:
+        st.warning(f"Klarte ikke å lese arkivfil for {day_key}: {e}")
+        return pd.DataFrame()
+
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+    return _normalize_delay_data(df)
+
+
+def local_history_day_keys():
+    """Returnerer settet av YYYY-MM-DD-nøkler som finnes lokalt i history/."""
+    history_dir = delay_history_dir()
+    if not os.path.isdir(history_dir):
+        return set()
+
+    keys = set()
+    for name in os.listdir(history_dir):
+        if name.startswith("forsinkelser_") and name.endswith(".csv"):
+            keys.add(name[len("forsinkelser_") : -len(".csv")])
+    return keys
+
+
+def archive_day_keys():
+    """Returnerer settet av YYYY-MM-DD-nøkler som finnes i fjernarkivet."""
+    index = load_archive_index()
+    return set(index.get("days", []))
+
+
+def all_available_day_keys():
+    """Returnerer alle datoer (lokale + arkiv) sortert stigende."""
+    return sorted(local_history_day_keys() | archive_day_keys())
+
+
+def earliest_available_date():
+    """Returnerer tidligste tilgjengelige dato (date-objekt) eller None."""
+    keys = all_available_day_keys()
+    if not keys:
+        return None
+    try:
+        return date.fromisoformat(keys[0])
+    except ValueError:
+        return None
+
+
+def _day_keys_in_range(start, end):
+    """Returnerer YYYY-MM-DD-nøkler mellom to datoer (inklusive begge)."""
+    if start > end:
+        return []
+    days = []
+    cursor = start
+    while cursor <= end:
+        days.append(cursor.isoformat())
+        cursor += timedelta(days=1)
+    return days
+
+
+def load_delay_range(start_date, end_date):
+    """
+    Laster forsinkelsesdata for et datointervall ved å kombinere lokale filer
+    og arkivhenting på forespørsel. Bruker Streamlits cache, så hver
+    arkivdag hentes maksimalt én gang per prosess.
+
+    Parametere:
+        start_date, end_date: date-objekter (inklusive begge ender).
+    """
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+    if isinstance(end_date, datetime):
+        end_date = end_date.date()
+
+    needed = _day_keys_in_range(start_date, end_date)
+    if not needed:
+        return pd.DataFrame()
+
+    local_keys = local_history_day_keys()
+    history_dir = delay_history_dir()
+
+    frames = []
+    missing_remote = []
+
+    for key in needed:
+        if key in local_keys:
+            file_path = os.path.join(history_dir, f"forsinkelser_{key}.csv")
+            try:
+                df_part = pd.read_csv(file_path, low_memory=False)
+                df_part = df_part.loc[:, ~df_part.columns.str.contains("^Unnamed")]
+                if not df_part.empty:
+                    frames.append(_normalize_delay_data(df_part))
+            except Exception as e:
+                st.warning(f"Kunne ikke lese {file_path}: {e}")
+        else:
+            df_remote = fetch_archived_day(key)
+            if df_remote.empty:
+                missing_remote.append(key)
+            else:
+                frames.append(df_remote)
+
+    if missing_remote:
+        st.caption(
+            f"ℹ️ {len(missing_remote)} dag(er) i intervallet finnes verken lokalt "
+            "eller i arkivet og ble hoppet over."
+        )
+
+    if not frames:
+        return pd.DataFrame()
+
+    return pd.concat(frames, ignore_index=True)
 
 
 def _normalize_delay_data(df):

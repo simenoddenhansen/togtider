@@ -21,10 +21,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from data_loader import (
     OSLO_TZ,
     load_delay_data,
+    load_delay_range,
     master_csv_path,
     get_mtime,
     filter_rail_only,
     get_unique_routes,
+    earliest_available_date,
+    archive_base_url,
 )
 from components.footer import entur_footer
 from components.responsive_css import inject_responsive_css
@@ -70,13 +73,28 @@ MASTER_PATH = master_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
 now_oslo = datetime.now(OSLO_TZ)
 
-df_master = load_delay_data(MASTER_PATH, master_mtime)
-df_master = filter_rail_only(df_master)
+df_local = load_delay_data(MASTER_PATH, master_mtime)
+df_local = filter_rail_only(df_local)
 
-if df_master.empty:
+if df_local.empty:
     st.warning("Ingen data tilgjengelig ennå — vent på neste scraper-kjøring.")
     entur_footer()
     st.stop()
+
+# Hva er tidligste tilgjengelige dato totalt sett (lokalt + arkiv)?
+archive_earliest = earliest_available_date()
+local_earliest_ts = df_local["scheduledDeparture"].min()
+local_earliest_date = local_earliest_ts.date() if pd.notna(local_earliest_ts) else None
+
+if archive_earliest is not None and local_earliest_date is not None:
+    earliest_overall = min(archive_earliest, local_earliest_date)
+elif archive_earliest is not None:
+    earliest_overall = archive_earliest
+else:
+    earliest_overall = local_earliest_date
+
+archive_available = bool(archive_base_url())
+df_master = df_local  # vil byttes ut hvis brukeren ber om data utenfor lokalt vindu
 
 # ─── Eksportkonfigurasjon ─────────────────────────────────────────
 
@@ -119,47 +137,49 @@ with col_right:
     )
 
     if "scheduledDeparture" in df_master.columns:
-        min_date = df_master["scheduledDeparture"].min()
-        max_date = df_master["scheduledDeparture"].max()
+        max_date_ts = df_master["scheduledDeparture"].max()
+        max_date_value = max_date_ts.date() if pd.notna(max_date_ts) else now_oslo.date()
+        min_date_value = earliest_overall or max_date_value
 
-        if pd.notna(min_date) and pd.notna(max_date):
-            if time_horizon == "Siste 24 timer":
-                date_start = (now_oslo - timedelta(hours=24)).date()
-                date_end = now_oslo.date()
-                st.caption(f"📆 {date_start} → {date_end}")
-            elif time_horizon == "Siste 7 dager":
-                date_start = (now_oslo - timedelta(days=7)).date()
-                date_end = now_oslo.date()
-                st.caption(f"📆 {date_start} → {date_end}")
-            elif time_horizon == "Siste 30 dager":
-                date_start = (now_oslo - timedelta(days=30)).date()
-                date_end = now_oslo.date()
-                st.caption(f"📆 {date_start} → {date_end}")
-            elif time_horizon == "Egendefinert periode":
-                date_start = st.date_input(
-                    "Fra dato",
-                    value=min_date.date(),
-                    min_value=min_date.date(),
-                    max_value=max_date.date(),
-                    key="download_date_start",
-                )
-                date_end = st.date_input(
-                    "Til dato",
-                    value=max_date.date(),
-                    min_value=min_date.date(),
-                    max_value=max_date.date(),
-                    key="download_date_end",
-                )
-                if date_start > date_end:
-                    st.error("❌ Startdato kan ikke være etter sluttdato.")
-            else:  # Alle data
-                date_start = min_date.date()
-                date_end = max_date.date()
-                st.caption(f"📆 Hele perioden: {date_start} → {date_end}")
-        else:
-            date_start = None
-            date_end = None
-            st.info("Ingen datoinformasjon tilgjengelig i datasettet.")
+        if time_horizon == "Siste 24 timer":
+            date_start = (now_oslo - timedelta(hours=24)).date()
+            date_end = now_oslo.date()
+            st.caption(f"📆 {date_start} → {date_end}")
+        elif time_horizon == "Siste 7 dager":
+            date_start = (now_oslo - timedelta(days=7)).date()
+            date_end = now_oslo.date()
+            st.caption(f"📆 {date_start} → {date_end}")
+        elif time_horizon == "Siste 30 dager":
+            date_start = (now_oslo - timedelta(days=30)).date()
+            date_end = now_oslo.date()
+            st.caption(f"📆 {date_start} → {date_end}")
+        elif time_horizon == "Egendefinert periode":
+            date_start = st.date_input(
+                "Fra dato",
+                value=min_date_value,
+                min_value=min_date_value,
+                max_value=max_date_value,
+                key="download_date_start",
+            )
+            date_end = st.date_input(
+                "Til dato",
+                value=max_date_value,
+                min_value=min_date_value,
+                max_value=max_date_value,
+                key="download_date_end",
+            )
+            if date_start > date_end:
+                st.error("❌ Startdato kan ikke være etter sluttdato.")
+        else:  # Alle data
+            date_start = min_date_value
+            date_end = max_date_value
+            st.caption(f"📆 Hele perioden: {date_start} → {date_end}")
+
+        if archive_available and local_earliest_date and date_start < local_earliest_date:
+            st.caption(
+                "ℹ️ Perioden går lenger tilbake enn det som ligger lokalt — "
+                "manglende dager hentes fra arkivet ved nedlasting."
+            )
     else:
         date_start = None
         date_end = None
@@ -200,7 +220,18 @@ with col_format:
 
 # ─── Bygg eksport-DataFrame ──────────────────────────────────────
 
-df_export = df_master.copy()
+needs_archive = (
+    date_start is not None
+    and local_earliest_date is not None
+    and date_start < local_earliest_date
+    and archive_available
+)
+
+if needs_archive:
+    with st.spinner("Henter arkiverte dager fra fjernlageret …"):
+        df_export = filter_rail_only(load_delay_range(date_start, date_end))
+else:
+    df_export = df_master.copy()
 
 # Filtrer på tidsperiode
 if (
