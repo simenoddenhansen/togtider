@@ -4,7 +4,7 @@ Utilities for working with the scraper schedule.
 
 from datetime import timedelta
 
-SCRAPE_INTERVAL_MINUTES = 40
+SCRAPE_INTERVAL_MINUTES = 30
 SCRAPE_INTERVAL_SECONDS = SCRAPE_INTERVAL_MINUTES * 60
 
 
