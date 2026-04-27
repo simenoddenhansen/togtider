@@ -1,18 +1,18 @@
-name: Entur Scraper (hvert 30. minutt)
+name: Entur Scraper (hvert 10. minutt)
 
 # Hindrer at to kjoringer kolliderer (f.eks. cron-job.org + GitHub schedule samtidig)
 concurrency:
   group: scraper-run
   cancel-in-progress: true
 on:
-  # Primaer trigger: cron-job.org sender workflow_dispatch hvert 30. minutt.
+  # Primaer trigger: cron-job.org sender workflow_dispatch hvert 10. minutt.
   # Dette er langt mer paalitelig enn GitHub Actions schedule (som i praksis
   # dropper ~50% av kjoringene og har gjennomsnittlig 85 min mellomrom).
   workflow_dispatch:
 
   schedule:
     # Fallback: GitHub cron hver 2. time som sikkerhetsnett hvis cron-job.org er nede.
-    # Primaertriggeren (cron-job.org) kjoerer hvert 30. minutt via workflow_dispatch.
+    # Primaertriggeren (cron-job.org) kjoerer hvert 10. minutt via workflow_dispatch.
     # GitHub Actions scheduler er best-effort og kan forsinke/droppe kjoringer,
     # saa denne fungerer kun som ekstra forsikring.
     - cron: "0 */2 * * *"
@@ -51,7 +51,6 @@ jobs:
           git add reiser_oslo_sandvika
           git add ruteData
           git add data_collection/alle_stasjoner.csv
-          git add data_collection/forsinkelser_siste_kjoring.csv
           git add data_collection/history
           git commit -m "Automatisk oppdatering av togtider" || echo "Ingen endringer å lagre"
           git push
