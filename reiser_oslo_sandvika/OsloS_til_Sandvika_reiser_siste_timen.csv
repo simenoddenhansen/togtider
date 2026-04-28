@@ -1,6 +1,6 @@
 scheduledDeparture,actualDeparture,isDelayed,delaySeconds,destination,routeId,routeName,transportMode,serviceJourneyId
 2026-04-28T05:54:00+02:00,2026-04-28T05:55:54+02:00,1,114.0,Skien,VYG:Line:RE11,Eidsvoll-Oslo S-Skien,rail,VYG:ServiceJourney:300-803-HHS_516691-R
-2026-04-28T06:01:00+02:00,2026-04-28T06:01:00+02:00,0,0.0,Spikkestad,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:2203_443591-R
+2026-04-28T06:01:00+02:00,2026-04-28T06:02:51+02:00,1,111.0,Spikkestad,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:2203_443591-R
 2026-04-28T06:14:00+02:00,2026-04-28T06:14:00+02:00,0,0.0,Asker,VYG:Line:R14,Asker-Oslo S-Kongsvinger,rail,VYG:ServiceJourney:1002_442907-R
 2026-04-28T06:24:00+02:00,2026-04-28T06:24:00+02:00,0,0.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:503_444294-R
 2026-04-28T06:31:00+02:00,2026-04-28T06:31:00+02:00,0,0.0,Spikkestad,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:2205_443593-R
