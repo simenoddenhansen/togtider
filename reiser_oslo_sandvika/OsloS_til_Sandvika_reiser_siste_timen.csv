@@ -15,5 +15,5 @@ scheduledDeparture,actualDeparture,isDelayed,delaySeconds,destination,routeId,ro
 2026-04-30T12:17:00+02:00,2026-04-30T12:17:13+02:00,1,13.0,Asker,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:2127_443533-R
 2026-04-30T12:24:00+02:00,2026-04-30T12:24:46+02:00,1,46.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:515_444314-R
 2026-04-30T12:31:00+02:00,2026-04-30T12:36:45+02:00,1,345.0,Spikkestad,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:2229_443630-R
-2026-04-30T12:34:00+02:00,2026-04-30T12:34:00+02:00,0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1628_443272-R
-2026-04-30T12:44:00+02:00,2026-04-30T12:44:00+02:00,0,0.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:314-LHM_444167-R
+2026-04-30T12:34:00+02:00,2026-04-30T12:41:38+02:00,1,458.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1628_443272-R
+2026-04-30T12:44:00+02:00,2026-04-30T12:45:13+02:00,1,73.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:314-LHM_444167-R
