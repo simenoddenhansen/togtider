@@ -2533,3 +2533,9 @@ scheduledDeparture,actualDeparture,isDelayed,delaySeconds,destination,routeId,ro
 2026-05-01T09:24:00+02:00,2026-05-01T09:24:00+02:00,0.0,0.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:509_444302-R
 2026-05-01T09:34:00+02:00,2026-05-01T09:34:00+02:00,0.0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1616_481142-R
 2026-05-01T09:44:00+02:00,2026-05-01T09:44:00+02:00,0.0,0.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:308-EVL_562799-R
+2026-05-01T09:54:00+02:00,2026-05-01T09:54:21+02:00,1.0,21.0,Skien,VYG:Line:RE11,Eidsvoll-Oslo S-Skien,rail,VYG:ServiceJourney:811_481329-R
+2026-05-01T10:04:00+02:00,2026-05-01T10:04:00+02:00,0.0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1618_443252-R
+2026-05-01T10:14:00+02:00,2026-05-01T10:14:00+02:00,0.0,0.0,Asker,VYG:Line:R14,Asker-Oslo S-Kongsvinger,rail,VYG:ServiceJourney:1010-LLS_512820-R
+2026-05-01T10:24:00+02:00,2026-05-01T10:24:00+02:00,0.0,0.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:511_444306-R
+2026-05-01T10:34:00+02:00,2026-05-01T10:34:00+02:00,0.0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1620_443256-R
+2026-05-01T10:44:00+02:00,2026-05-01T10:44:00+02:00,0.0,0.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:310-EVL_562801-R
