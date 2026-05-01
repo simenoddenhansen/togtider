@@ -1,9 +1,12 @@
 scheduledDeparture,actualDeparture,isDelayed,delaySeconds,destination,routeId,routeName,transportMode,serviceJourneyId
-2026-05-01T07:24:00+02:00,2026-05-01T07:24:22+02:00,1,22.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:505_444298-R
-2026-05-01T07:44:00+02:00,2026-05-01T07:44:00+02:00,0,0.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:304-HHS_487829-R
-2026-05-01T07:54:00+02:00,2026-05-01T07:54:29+02:00,1,29.0,Skien,VYG:Line:RE11,Eidsvoll-Oslo S-Skien,rail,VYG:ServiceJourney:807_481326-R
 2026-05-01T08:04:00+02:00,2026-05-01T08:04:08+02:00,1,8.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1610_443230-R
 2026-05-01T08:14:00+02:00,2026-05-01T08:14:17+02:00,1,17.0,Asker,VYG:Line:R14,Asker-Oslo S-Kongsvinger,rail,VYG:ServiceJourney:1006_442911-R
 2026-05-01T08:24:00+02:00,2026-05-01T08:24:11+02:00,1,11.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:507_444300-R
 2026-05-01T08:34:00+02:00,2026-05-01T08:34:35+02:00,1,35.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1612_443236-R
 2026-05-01T08:44:00+02:00,2026-05-01T08:44:08+02:00,1,8.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:306-EVL_562797-R
+2026-05-01T08:54:00+02:00,2026-05-01T08:54:34+02:00,1,34.0,Skien,VYG:Line:RE11,Eidsvoll-Oslo S-Skien,rail,VYG:ServiceJourney:809_444389-R
+2026-05-01T09:04:00+02:00,2026-05-01T09:04:00+02:00,0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1614_443243-R
+2026-05-01T09:14:00+02:00,2026-05-01T09:14:00+02:00,0,0.0,Asker,VYG:Line:R14,Asker-Oslo S-Kongsvinger,rail,VYG:ServiceJourney:1008-LLS_512816-R
+2026-05-01T09:24:00+02:00,2026-05-01T09:24:00+02:00,0,0.0,Kongsberg,VYG:Line:R12,Kongsberg-Oslo S-Eidsvoll,rail,VYG:ServiceJourney:509_444302-R
+2026-05-01T09:34:00+02:00,2026-05-01T09:34:00+02:00,0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1616_481142-R
+2026-05-01T09:44:00+02:00,2026-05-01T09:44:00+02:00,0,0.0,Drammen,VYG:Line:RE10,Drammen-Oslo S-Lillehammer,rail,VYG:ServiceJourney:308-EVL_562799-R
