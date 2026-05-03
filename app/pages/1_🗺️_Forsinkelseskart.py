@@ -15,6 +15,14 @@ import pydeck as pdk
 import plotly.express as px
 import streamlit as st
 
+try:
+    import folium
+    from streamlit_folium import st_folium
+
+    _HAS_FOLIUM = True
+except ModuleNotFoundError:
+    _HAS_FOLIUM = False
+
 # Sørg for at app/-mappen er på path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -31,6 +39,7 @@ from components.kpi import styled_kpi
 from components.footer import entur_footer
 from components.sidebar import render_sidebar_filters
 from components.responsive_css import inject_responsive_css
+from components.top_nav import render_top_nav
 from utils import (
     ACCENT_COLOR,
     DELAY_COLOR_SCALE,
@@ -43,11 +52,140 @@ from utils import (
 )
 
 
+def _rgba_to_hex(color):
+    return "#{:02x}{:02x}{:02x}".format(*color[:3])
+
+
+def render_station_delay_map(df_map, center_lat, center_lng, zoom):
+    """Rendrer kartet med Folium når tilgjengelig, ellers pydeck."""
+    if _HAS_FOLIUM:
+        delay_map = folium.Map(
+            location=[center_lat, center_lng],
+            zoom_start=zoom,
+            tiles="CartoDB dark_matter",
+            control_scale=True,
+            prefer_canvas=True,
+        )
+
+        for row in df_map.itertuples(index=False):
+            color = _rgba_to_hex(row.color)
+            popup_html = (
+                f"<strong>{row.name}</strong><br>"
+                f"Snitt forsinkelse: <strong>{row.delayMin} min</strong><br>"
+                f"Avganger: {row.count}"
+            )
+            folium.CircleMarker(
+                location=[row.latitude, row.longitude],
+                radius=6,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.82,
+                weight=2,
+                tooltip=str(row.name),
+                popup=folium.Popup(popup_html, max_width=280),
+            ).add_to(delay_map)
+
+        st_folium(
+            delay_map,
+            height=680,
+            use_container_width=True,
+            returned_objects=[],
+        )
+        return
+
+    scatter_layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=df_map.to_dict("records"),
+        get_position=["longitude", "latitude"],
+        get_fill_color="color",
+        get_radius=800,
+        radius_min_pixels=4,
+        radius_max_pixels=15,
+        pickable=True,
+    )
+
+    deck = pdk.Deck(
+        layers=[scatter_layer],
+        initial_view_state=pdk.ViewState(
+            latitude=center_lat,
+            longitude=center_lng,
+            zoom=zoom,
+            pitch=0,
+        ),
+        tooltip={
+            "html": (
+                "<b>{name}</b><br/>"
+                "Snitt forsinkelse: <b>{delayMin} min</b><br/>"
+                "Avganger: {count}"
+            ),
+            "style": {
+                "backgroundColor": "#1a1a2e",
+                "color": "white",
+                "fontSize": "12px",
+                "padding": "8px",
+                "borderRadius": "6px",
+            },
+        },
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    )
+
+    st.pydeck_chart(deck, use_container_width=True)
+
+
+def render_map_section(df, df_stations):
+    """Rendrer hovedkartet for forsinkelser."""
+    st.markdown("---")
+    st.subheader("🗺️ Forsinkelseskart")
+
+    if df.empty or df_stations.empty:
+        st.info("Ingen data å vise på kart.")
+        return
+
+    station_delays = (
+        df.groupby("stationId")
+        .agg(avgDelay=("delaySeconds", "mean"), count=("isDelayed", "count"))
+        .reset_index()
+    )
+
+    df_map = station_delays.merge(
+        df_stations[["id", "name", "latitude", "longitude"]],
+        left_on="stationId",
+        right_on="id",
+        how="inner",
+    )
+
+    if df_map.empty or "latitude" not in df_map.columns:
+        st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
+        return
+
+    df_map = df_map.dropna(subset=["latitude", "longitude"])
+    if df_map.empty:
+        st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
+        return
+
+    max_delay_val = max(df_map["avgDelay"].max(), 1)
+    df_map["color"] = df_map["avgDelay"].apply(
+        lambda d: delay_to_color(d, max_delay_val)
+    )
+    df_map["delayMin"] = (df_map["avgDelay"] / 60).round(1)
+
+    center_lat = df_map["latitude"].mean()
+    center_lng = df_map["longitude"].mean()
+    lat_spread = df_map["latitude"].max() - df_map["latitude"].min()
+    lng_spread = df_map["longitude"].max() - df_map["longitude"].min()
+    zoom = compute_zoom(lat_spread, lng_spread)
+
+    render_station_delay_map(df_map, center_lat, center_lng, zoom)
+    st.caption("🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse")
+
+
 # ─── Sidekonfigurasjon ────────────────────────────────────────────
 
 st.set_page_config(page_title="Forsinkelseskart", page_icon="🗺️", layout="wide")
 
 inject_responsive_css()
+render_top_nav("Kart")
 
 st.title("🗺️ Forsinkelseskart")
 st.caption(
@@ -104,6 +242,13 @@ with kpi_cols[2]:
     styled_kpi("Snitt forsinkelse", f"{avg_delay:.1f} min")
 with kpi_cols[3]:
     styled_kpi("Maks forsinkelse", f"{max_delay:.0f} min")
+
+
+# ═════════════════════════════════════════════════════════════════
+# KART (hovedopplevelse)
+# ═════════════════════════════════════════════════════════════════
+
+render_map_section(df, df_stations)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -220,97 +365,6 @@ if not df.empty and "scheduledDeparture" in df.columns:
     st.plotly_chart(fig_hourly, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 else:
     st.info("Ingen data tilgjengelig.")
-
-
-# ═════════════════════════════════════════════════════════════════
-# KART
-# ═════════════════════════════════════════════════════════════════
-
-st.markdown("---")
-st.subheader("🗺️ Forsinkelseskart")
-
-if not df.empty and not df_stations.empty:
-    # Snittforsinkelse per stasjon
-    station_delays = (
-        df.groupby("stationId")
-        .agg(avgDelay=("delaySeconds", "mean"), count=("isDelayed", "count"))
-        .reset_index()
-    )
-
-    # Koble med stasjonskoordinater
-    df_map = station_delays.merge(
-        df_stations[["id", "name", "latitude", "longitude"]],
-        left_on="stationId",
-        right_on="id",
-        how="inner",
-    )
-
-    if not df_map.empty and "latitude" in df_map.columns:
-        df_map = df_map.dropna(subset=["latitude", "longitude"])
-
-        max_delay_val = max(df_map["avgDelay"].max(), 1)
-
-        df_map["color"] = df_map["avgDelay"].apply(
-            lambda d: delay_to_color(d, max_delay_val)
-        )
-        df_map["delayMin"] = (df_map["avgDelay"] / 60).round(1)
-
-        scatter_data = df_map.to_dict("records")
-
-        # Stasjonspunkt-lag
-        scatter_layer = pdk.Layer(
-            "ScatterplotLayer",
-            data=scatter_data,
-            get_position=["longitude", "latitude"],
-            get_fill_color="color",
-            get_radius=800,
-            radius_min_pixels=4,
-            radius_max_pixels=15,
-            pickable=True,
-        )
-
-        layers = [scatter_layer]
-
-        # Kartsentrum & zoom
-        center_lat = df_map["latitude"].mean()
-        center_lng = df_map["longitude"].mean()
-        lat_spread = df_map["latitude"].max() - df_map["latitude"].min()
-        lng_spread = df_map["longitude"].max() - df_map["longitude"].min()
-        zoom = compute_zoom(lat_spread, lng_spread)
-
-        deck = pdk.Deck(
-            layers=layers,
-            initial_view_state=pdk.ViewState(
-                latitude=center_lat,
-                longitude=center_lng,
-                zoom=zoom,
-                pitch=0,
-            ),
-            tooltip={
-                "html": (
-                    "<b>{name}</b><br/>"
-                    "Snitt forsinkelse: <b>{delayMin} min</b><br/>"
-                    "Avganger: {count}"
-                ),
-                "style": {
-                    "backgroundColor": "#1a1a2e",
-                    "color": "white",
-                    "fontSize": "12px",
-                    "padding": "8px",
-                    "borderRadius": "6px",
-                },
-            },
-            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-        )
-
-        st.pydeck_chart(deck, use_container_width=True)
-
-        legend_text = "🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse"
-        st.caption(legend_text)
-    else:
-        st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
-else:
-    st.info("Ingen data å vise på kart.")
 
 
 # ═════════════════════════════════════════════════════════════════

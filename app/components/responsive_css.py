@@ -16,6 +16,58 @@ def inject_responsive_css():
    Responsiv CSS for Togforsinkelser-appen
    ══════════════════════════════════════════════════════════ */
 
+/* Skjul Streamlits venstremeny helt. Appen bruker egen toppnav. */
+[data-testid="stSidebar"],
+[data-testid="collapsedControl"] {
+    display: none !important;
+}
+
+.block-container {
+    padding-top: 1.2rem !important;
+}
+
+.top-nav-shell {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    margin: -0.4rem 0 1.4rem 0;
+    padding: 0 0 0.8rem 0;
+}
+
+.top-nav-brand {
+    align-items: center;
+    color: #f8fafc;
+    display: flex;
+    font-size: 1.05rem;
+    font-weight: 800;
+    min-height: 2.5rem;
+}
+
+.top-nav-active {
+    color: rgba(248, 250, 252, 0.52);
+    font-size: 0.78rem;
+    margin-top: 0.2rem;
+}
+
+div[data-testid="stPageLink"] a {
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    min-height: 2.5rem;
+}
+
+.filter-bar {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    margin: 0.8rem 0 1.2rem 0;
+    padding: 0.85rem 0.95rem 0.2rem 0.95rem;
+}
+
+.filter-bar-title {
+    color: rgba(248, 250, 252, 0.68);
+    font-size: 0.86rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+    text-transform: uppercase;
+}
+
 /* ── Mobiloptimering (< 768px) ─────────────────────────── */
 @media (max-width: 768px) {
     /* Reduser padding på sidene for å utnytte plassen */
@@ -47,11 +99,6 @@ def inject_responsive_css():
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Sidebar: litt strammere på mobil */
-    section[data-testid="stSidebar"] > div {
-        padding-top: 1rem !important;
-    }
-
     /* Tittel og overskrifter: tilpasset mobilskjerm */
     h1 {
         font-size: 1.6rem !important;
@@ -73,6 +120,10 @@ def inject_responsive_css():
     /* Download-knapp: full bredde på mobil */
     .stDownloadButton > button {
         width: 100% !important;
+    }
+
+    .top-nav-brand {
+        font-size: 0.95rem;
     }
 }
 

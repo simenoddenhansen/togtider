@@ -40,6 +40,7 @@ from components.kpi import styled_kpi
 from components.footer import entur_footer
 from components.sidebar import render_sidebar_filters
 from components.responsive_css import inject_responsive_css
+from components.top_nav import render_top_nav
 from schedule_utils import SCRAPE_INTERVAL_MINUTES, get_next_scheduled_update
 from utils import (
     ACCENT_COLOR,
@@ -59,6 +60,7 @@ st.set_page_config(
 )
 
 inject_responsive_css()
+render_top_nav("Oversikt")
 
 # Auto-refresh hvert minutt for nedtelling / ferske data
 if _HAS_AUTOREFRESH:

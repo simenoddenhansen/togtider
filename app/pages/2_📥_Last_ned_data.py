@@ -31,6 +31,7 @@ from data_loader import (
 )
 from components.footer import entur_footer
 from components.responsive_css import inject_responsive_css
+from components.top_nav import render_top_nav
 
 # ─── Norske kolonnenavn med API-variabel i parentes ───────────────
 # Komplett mapping for alle kolonner i forsinkelseshistorikken
@@ -60,6 +61,7 @@ COLUMN_LABELS_FULL = {
 st.set_page_config(page_title="Last ned data", page_icon="📥", layout="wide")
 
 inject_responsive_css()
+render_top_nav("Last ned")
 
 st.title("📥 Last ned data")
 st.markdown(
