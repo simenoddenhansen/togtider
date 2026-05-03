@@ -477,7 +477,7 @@ st.caption(
     "tidsperiode, ruter og filformat."
 )
 st.page_link(
-    "pages/3_📥_Last_ned_data.py",
+    "pages/2_📥_Last_ned_data.py",
     label="📥 Gå til nedlastingssiden",
     icon="📥",
 )

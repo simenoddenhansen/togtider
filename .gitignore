@@ -34,3 +34,5 @@ improvements/
 # Scraper snapshot (regenerated every run; daily history files in
 # data_collection/history/ are the authoritative store)
 data_collection/forsinkelser_siste_kjoring.csv
+# Legacy master file (replaced by daily history files)
+data_collection/forsinkelser_master.csv

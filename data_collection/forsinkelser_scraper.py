@@ -228,24 +228,35 @@ def get_last_scraped_time(script_dir):
     return None
 
 
-def build_batch_query(station_ids, start_time_str, time_range):
-    """Bygger GraphQL-query med aliaser for en batch av stasjoner."""
+def build_batch_query(station_ids):
+    """Bygger GraphQL-query og variabler for en batch av stasjoner.
+
+    Bruker GraphQL-variabler i stedet for f-string-interpolering for stasjons-IDer
+    og tidsparametere, slik at API-et selv håndterer escaping/typing.
+    Returnerer (query_string, variables_dict).
+    """
+    var_decls = ["$startTime: DateTime!", "$timeRange: Int!"]
     aliases = []
+    variables = {}
     for i, sid in enumerate(station_ids):
+        var_name = f"sid{i}"
+        var_decls.append(f"${var_name}: String!")
+        variables[var_name] = sid
         aliases.append(
-            f'  s{i}: stopPlace(id: "{sid}") {{\n'
+            f'  s{i}: stopPlace(id: ${var_name}) {{\n'
             f'    id\n'
             f'    name\n'
             f'    estimatedCalls(\n'
-            f'      startTime: "{start_time_str}"\n'
-            f'      timeRange: {time_range}\n'
+            f'      startTime: $startTime\n'
+            f'      timeRange: $timeRange\n'
             f'      numberOfDepartures: {MAX_DEPARTURES}\n'
             f'    ) {{\n'
             f'      {ESTIMATED_CALL_FIELDS}\n'
             f'    }}\n'
             f'  }}'
         )
-    return "{\n" + "\n".join(aliases) + "\n}"
+    query = "query Batch(" + ", ".join(var_decls) + ") {\n" + "\n".join(aliases) + "\n}"
+    return query, variables
 
 
 def parse_calls(stop_data, scraped_at):
@@ -345,12 +356,17 @@ def fetch_delays(station_ids, start_time_str, time_range, scraped_at):
         start = batch_idx * BATCH_SIZE
         end = min(start + BATCH_SIZE, len(station_ids))
         batch = station_ids[start:end]
-        query = build_batch_query(batch, start_time_str, time_range)
+        query, batch_variables = build_batch_query(batch)
+        variables = {
+            "startTime": start_time_str,
+            "timeRange": time_range,
+            **batch_variables,
+        }
 
         try:
             response = requests.post(
                 API_URL,
-                json={"query": query},
+                json={"query": query, "variables": variables},
                 headers=HEADERS,
                 timeout=60,
             )
