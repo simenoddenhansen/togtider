@@ -25,6 +25,9 @@ output.html
 # Local-only tests
 local_tests/
 
+# Claude support
+.claude/worktrees
+
 # Local-only planlegging / forbedringsnotater (ikke for offentlig repo)
 improvements/
 
