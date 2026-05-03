@@ -34,6 +34,7 @@ from components.responsive_css import inject_responsive_css
 from utils import (
     ACCENT_COLOR,
     DELAY_COLOR_SCALE,
+    PLOTLY_STATIC_CONFIG,
     PLOTLY_TEMPLATE,
     COLUMN_LABELS,
     DISPLAY_COLUMNS,
@@ -163,7 +164,7 @@ if not df.empty and "delaySeconds" in df.columns:
         fig_hist.update_traces(
             hovertemplate="Forsinkelse: %{x:.1f} min<br>Antall: %{y}<extra></extra>"
         )
-        st.plotly_chart(fig_hist, use_container_width=True)
+        st.plotly_chart(fig_hist, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 
 else:
     st.info("Ingen forsinkelsesdata tilgjengelig for å vise fordeling.")
@@ -216,7 +217,7 @@ if not df.empty and "scheduledDeparture" in df.columns:
         hovertemplate="<b>Kl %{x}:00</b><br>Snitt: %{y:.1f} min<br>Avganger: %{customdata[0]}<extra></extra>",
         customdata=hourly_stats[["count"]].values,
     )
-    st.plotly_chart(fig_hourly, use_container_width=True)
+    st.plotly_chart(fig_hourly, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 else:
     st.info("Ingen data tilgjengelig.")
 
@@ -423,7 +424,7 @@ with chart_left:
             fig_stations.update_traces(
                 hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
             )
-            st.plotly_chart(fig_stations, use_container_width=True)
+            st.plotly_chart(fig_stations, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
         else:
             st.info("Ingen data å vise.")
     else:
@@ -462,7 +463,7 @@ with chart_right:
             fig_lines.update_traces(
                 hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
             )
-            st.plotly_chart(fig_lines, use_container_width=True)
+            st.plotly_chart(fig_lines, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
         else:
             st.info("Ingen data å vise.")
     else:

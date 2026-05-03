@@ -137,6 +137,11 @@ COLUMN_LABELS = {
 # ─── Plotly-hjelpere ─────────────────────────────────────────────
 
 PLOTLY_TEMPLATE = "plotly_dark"
+PLOTLY_STATIC_CONFIG = {
+    "displayModeBar": False,
+    "staticPlot": True,
+    "responsive": True,
+}
 
 # Grønn → gul → rød fargeskala for forsinkelsesdiagrammer
 DELAY_COLOR_SCALE = [

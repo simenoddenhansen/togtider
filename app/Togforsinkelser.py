@@ -45,6 +45,7 @@ from utils import (
     ACCENT_COLOR,
     DELAY_COLOR_SCALE,
     HEATMAP_COLOR_SCALE,
+    PLOTLY_STATIC_CONFIG,
     PLOTLY_TEMPLATE,
     WEEKDAY_NAMES,
 )
@@ -269,7 +270,7 @@ if not df.empty and "scheduledDeparture" in df.columns:
     fig_daily.update_traces(
         hovertemplate="<b>%{x|%d. %b %Y}</b><br>Forsinkelsesminutter: %{y:.0f}<extra></extra>"
     )
-    st.plotly_chart(fig_daily, use_container_width=True)
+    st.plotly_chart(fig_daily, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 
     # ─── Daglig statistikk-tabell med uteliggerdeteksjon ─────────
 
@@ -400,7 +401,7 @@ if not df.empty and "scheduledDeparture" in df.columns:
     fig_heat.update_traces(
         hovertemplate="<b>%{y}, kl %{x}</b><br>Snitt forsinkelse: %{z:.1f} min<extra></extra>"
     )
-    st.plotly_chart(fig_heat, use_container_width=True)
+    st.plotly_chart(fig_heat, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 else:
     st.info("Ingen data tilgjengelig for heatmap.")
 
@@ -461,7 +462,7 @@ if not df.empty and "lineName" in df.columns:
             "Avganger: %{customdata[1]}<extra></extra>"
         )
     )
-    st.plotly_chart(fig_lines, use_container_width=True)
+    st.plotly_chart(fig_lines, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 else:
     st.caption("Ingen linjedata tilgjengelig.")
 
