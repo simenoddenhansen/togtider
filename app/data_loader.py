@@ -24,6 +24,7 @@ LEGACY_MASTER_FILENAME = "forsinkelser_master.csv"
 ARCHIVE_BASE_URL_ENV = "TOGTIDER_ARCHIVE_BASE_URL"
 ARCHIVE_INDEX_FILENAME = "archive_index.json"
 ARCHIVE_FETCH_TIMEOUT = 15
+DELAY_DATA_NORMALIZATION_VERSION = 2
 
 
 def project_root():
@@ -320,7 +321,7 @@ def _normalize_delay_data(df):
 
 
 @st.cache_data
-def _load_delay_file(file_path, _mtime):
+def _load_delay_file(file_path, mtime, normalization_version=DELAY_DATA_NORMALIZATION_VERSION):
     """Laster og parser én forsinkelsesfil. Cachet per (sti, mtime)."""
     try:
         df_part = pd.read_csv(file_path, low_memory=False)
@@ -334,7 +335,7 @@ def _load_delay_file(file_path, _mtime):
     return _normalize_delay_data(df_part)
 
 
-def load_delay_data(path, _mtime):
+def load_delay_data(path, mtime):
     """
     Laster og parser forsinkelsesdata fra daglige historikkfiler.
 
@@ -342,7 +343,7 @@ def load_delay_data(path, _mtime):
     nye filen og returnerer concat av allerede-cachete frames.
     """
     files = list_delay_data_files(path)
-    if _mtime is None or not files:
+    if mtime is None or not files:
         return pd.DataFrame()
 
     frames = []
