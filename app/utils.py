@@ -1,43 +1,14 @@
 """
 utils.py
 ────────
-Re-export hub for Togforsinkelser-appen.
-
-Denne filen importerer og re-eksporterer alle delte funksjoner og konstanter
-fra de nye modulene (data_loader, components), slik at eksisterende
-`from utils import ...`-setninger forblir gyldige.
-
-Ny kode bør importere direkte fra data_loader eller components/.
+Delte hjelpefunksjoner og konstanter for visualisering, Entur API-kall og
+kolonnenavn. Dataregisteret ligger i data_loader.py og UI-byggesteiner i
+components/.
 """
 
-import os
-from datetime import datetime
-
-import pandas as pd
-import pytz
 import requests
 import streamlit as st
 
-# ─── Re-eksporter fra data_loader ─────────────────────────────────
-
-from data_loader import (
-    OSLO_TZ,
-    project_root,
-    master_csv_path,
-    stations_csv_path,
-    get_mtime,
-    load_delay_data,
-    load_stations,
-    filter_rail_only,
-    get_unique_routes,
-    get_route_traffic_counts,
-)
-
-# ─── Re-eksporter fra components ──────────────────────────────────
-
-from components.kpi import styled_kpi
-from components.footer import entur_footer
-from components.sidebar import render_sidebar_filters, apply_time_filter
 
 # ─── Entur API-konfigurasjon ──────────────────────────────────────
 
@@ -100,7 +71,7 @@ def fetch_route_geometry(line_id):
             "mode": line.get("transportMode", ""),
             "stops": best_pattern,
         }
-    except Exception:
+    except requests.RequestException:
         return None
 
 
@@ -161,22 +132,6 @@ COLUMN_LABELS = {
     "delaySource": "Datakilde",
     "realtime": "Sanntid",
 }
-
-
-# ─── Nedlasting ──────────────────────────────────────────────────
-
-def download_csv_button(df, prefix="togforsinkelser"):
-    """Rendrer en nedlastingsknapp for gitt DataFrame."""
-    if df.empty:
-        return
-    csv_bytes = df.to_csv(index=False).encode("utf-8")
-    now_str = datetime.now(OSLO_TZ).strftime("%Y%m%d_%H%M")
-    st.download_button(
-        label="📥 Last ned filtrerte data (CSV)",
-        data=csv_bytes,
-        file_name=f"{prefix}_{now_str}.csv",
-        mime="text/csv",
-    )
 
 
 # ─── Plotly-hjelpere ─────────────────────────────────────────────

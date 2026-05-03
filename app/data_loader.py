@@ -317,34 +317,45 @@ def _normalize_delay_data(df):
 
 
 @st.cache_data
+def _load_delay_file(file_path, _mtime):
+    """Laster og parser én forsinkelsesfil. Cachet per (sti, mtime)."""
+    try:
+        df_part = pd.read_csv(file_path, low_memory=False)
+    except Exception as e:
+        st.error(f"Kunne ikke lese datafilen {file_path}: {e}")
+        return pd.DataFrame()
+
+    df_part = df_part.loc[:, ~df_part.columns.str.contains("^Unnamed")]
+    if df_part.empty:
+        return pd.DataFrame()
+    return _normalize_delay_data(df_part)
+
+
 def load_delay_data(path, _mtime):
     """
     Laster og parser forsinkelsesdata fra daglige historikkfiler.
 
-    Parametere:
-        path: Sti til historikkmappe eller én konkret CSV-fil.
-        _mtime: Sist-endret-tid, brukt til cache-invalidering.
+    Cacher per fil basert på filens mtime, slik at ny dag-fil bare leser den
+    nye filen og returnerer concat av allerede-cachete frames.
     """
     files = list_delay_data_files(path)
     if _mtime is None or not files:
         return pd.DataFrame()
 
     frames = []
-    try:
-        for file_path in files:
-            df_part = pd.read_csv(file_path, low_memory=False)
-            df_part = df_part.loc[:, ~df_part.columns.str.contains("^Unnamed")]
-            if not df_part.empty:
-                frames.append(df_part)
-    except Exception as e:
-        st.error(f"Kunne ikke lese datafilen: {e}")
-        return pd.DataFrame()
+    for file_path in files:
+        try:
+            file_mtime = os.path.getmtime(file_path)
+        except OSError:
+            continue
+        df_part = _load_delay_file(file_path, file_mtime)
+        if not df_part.empty:
+            frames.append(df_part)
 
     if not frames:
         return pd.DataFrame()
 
-    df = pd.concat(frames, ignore_index=True)
-    return _normalize_delay_data(df)
+    return pd.concat(frames, ignore_index=True)
 
 
 @st.cache_data
