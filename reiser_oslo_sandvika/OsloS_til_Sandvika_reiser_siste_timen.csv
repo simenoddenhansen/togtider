@@ -1,3 +1,1 @@
 scheduledDeparture,actualDeparture,isDelayed,delaySeconds,destination,routeId,routeName,transportMode,serviceJourneyId
-2026-05-03T01:04:00+02:00,2026-05-03T01:04:00+02:00,0,0.0,Drammen,VYG:Line:R13,Drammen-Oslo S-Dal,rail,VYG:ServiceJourney:1678_481185-R
-2026-05-03T01:31:00+02:00,2026-05-03T01:31:43+02:00,1,43.0,Drammen,VYG:Line:L1,Spikkestad-Oslo S-Lillestrøm,rail,VYG:ServiceJourney:82281_557103-R
