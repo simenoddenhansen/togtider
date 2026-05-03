@@ -42,96 +42,6 @@ from utils import (
     compute_zoom,
 )
 
-MAP_ROUTE_LINE_LIMIT = 35
-MAP_SELECTED_ROUTE_LINE_LIMIT = 8
-
-
-def build_route_segments(df_routes, df_map, max_delay_val, selected_route=None):
-    """Bygger rette linjesegmenter mellom stopp fra lokale reisedata."""
-    required_cols = {"lineId", "serviceJourneyId", "scheduledDeparture", "stationId"}
-    if not required_cols.issubset(df_routes.columns):
-        return []
-
-    line_counts = (
-        df_routes.dropna(subset=["lineId"])
-        .groupby("lineId", as_index=False)
-        .agg(routeName=("lineName", "first"), departures=("lineId", "size"))
-        .sort_values("departures", ascending=False)
-    )
-
-    if line_counts.empty:
-        return []
-
-    route_limit = MAP_SELECTED_ROUTE_LINE_LIMIT if selected_route else MAP_ROUTE_LINE_LIMIT
-    line_ids = line_counts["lineId"].head(route_limit).tolist()
-
-    route_points = df_routes[df_routes["lineId"].isin(line_ids)].merge(
-        df_map[["stationId", "name", "latitude", "longitude", "avgDelay"]],
-        on="stationId",
-        how="inner",
-    )
-    route_points = route_points.dropna(
-        subset=["serviceJourneyId", "scheduledDeparture", "latitude", "longitude"]
-    )
-    route_points = route_points[
-        route_points["serviceJourneyId"].astype(str).str.strip() != ""
-    ]
-
-    if route_points.empty:
-        return []
-
-    journey_counts = (
-        route_points.groupby(["lineId", "serviceJourneyId"], as_index=False)
-        .agg(stops=("stationId", "nunique"))
-        .sort_values(["lineId", "stops"], ascending=[True, False])
-    )
-    representative_journeys = (
-        journey_counts.groupby("lineId")
-        .head(2)["serviceJourneyId"]
-        .tolist()
-    )
-
-    segments_by_key = {}
-    representative_points = route_points[
-        route_points["serviceJourneyId"].isin(representative_journeys)
-    ]
-    for _, journey in representative_points.groupby("serviceJourneyId"):
-        journey = (
-            journey.sort_values("scheduledDeparture")
-            .drop_duplicates(subset=["stationId"])
-            .reset_index(drop=True)
-        )
-        station_pairs = zip(
-            journey.iloc[:-1].to_dict("records"),
-            journey.iloc[1:].to_dict("records"),
-        )
-        for s1, s2 in station_pairs:
-            seg_delay = (s1["avgDelay"] + s2["avgDelay"]) / 2
-            key = tuple(
-                sorted(
-                    [
-                        (round(s1["latitude"], 5), round(s1["longitude"], 5)),
-                        (round(s2["latitude"], 5), round(s2["longitude"], 5)),
-                    ]
-                )
-            )
-            current = segments_by_key.get(key)
-            if current is not None and current["delayMin"] >= round(seg_delay / 60, 1):
-                continue
-
-            segments_by_key[key] = {
-                "from_lat": s1["latitude"],
-                "from_lng": s1["longitude"],
-                "to_lat": s2["latitude"],
-                "to_lng": s2["longitude"],
-                "color": delay_to_color(seg_delay, max_delay_val),
-                "name": s1.get("lineName", ""),
-                "delayMin": round(seg_delay / 60, 1),
-                "count": "",
-            }
-
-    return list(segments_by_key.values())
-
 
 # ─── Sidekonfigurasjon ────────────────────────────────────────────
 
@@ -361,27 +271,6 @@ if not df.empty and not df_stations.empty:
 
         layers = [scatter_layer]
 
-        line_segments = build_route_segments(
-            df_routes=df,
-            df_map=df_map,
-            max_delay_val=max_delay_val,
-            selected_route=selected_route,
-        )
-
-        if line_segments:
-            line_layer = pdk.Layer(
-                "LineLayer",
-                data=line_segments,
-                get_source_position=["from_lng", "from_lat"],
-                get_target_position=["to_lng", "to_lat"],
-                get_color="color",
-                get_width=6,
-                width_min_pixels=2,
-                width_max_pixels=8,
-                pickable=True,
-            )
-            layers.insert(0, line_layer)
-
         # Kartsentrum & zoom
         center_lat = df_map["latitude"].mean()
         center_lng = df_map["longitude"].mean()
@@ -417,9 +306,6 @@ if not df.empty and not df_stations.empty:
         st.pydeck_chart(deck, use_container_width=True)
 
         legend_text = "🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse"
-        if line_segments:
-            shown_routes = MAP_SELECTED_ROUTE_LINE_LIMIT if selected_route else MAP_ROUTE_LINE_LIMIT
-            legend_text += f" · Linjer viser togstrekninger (inntil {shown_routes} mest trafikkerte)"
         st.caption(legend_text)
     else:
         st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
