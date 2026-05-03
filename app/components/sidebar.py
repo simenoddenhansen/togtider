@@ -30,6 +30,8 @@ def apply_time_filter(df, selected_time, now_oslo=None):
     if "scheduledDeparture" not in df.columns:
         return df
 
+    df = df[df["scheduledDeparture"] <= now_oslo]
+
     period_map = {
         "Siste 24 timer": timedelta(hours=24),
         "Siste 7 dager": timedelta(days=7),

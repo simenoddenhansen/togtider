@@ -306,12 +306,15 @@ def _normalize_delay_data(df):
     if "delaySeconds" in df.columns:
         df["delaySeconds"] = pd.to_numeric(
             df["delaySeconds"], errors="coerce"
-        ).fillna(0)
+        ).fillna(0).clip(lower=0)
 
     if "isDelayed" in df.columns:
-        df["isDelayed"] = pd.to_numeric(
-            df["isDelayed"], errors="coerce"
-        ).fillna(0).astype(int)
+        if "delaySeconds" in df.columns:
+            df["isDelayed"] = (df["delaySeconds"] > 0).astype(int)
+        else:
+            df["isDelayed"] = pd.to_numeric(
+                df["isDelayed"], errors="coerce"
+            ).fillna(0).astype(int)
 
     return df
 

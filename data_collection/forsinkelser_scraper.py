@@ -307,11 +307,11 @@ def parse_calls(stop_data, scraped_at):
             aimed_dt = datetime.fromisoformat(aimed)
             if actual:
                 actual_dt = datetime.fromisoformat(actual)
-                delay_seconds = (actual_dt - aimed_dt).total_seconds()
+                delay_seconds = max(0.0, (actual_dt - aimed_dt).total_seconds())
                 delay_source = "actual"
             elif expected and expected != aimed:
                 expected_dt = datetime.fromisoformat(expected)
-                delay_seconds = (expected_dt - aimed_dt).total_seconds()
+                delay_seconds = max(0.0, (expected_dt - aimed_dt).total_seconds())
                 delay_source = "expected"
         except (ValueError, TypeError):
             delay_seconds = 0.0
@@ -406,14 +406,14 @@ def smart_dedup(df_all, dedupe_keys):
         df_all["actualDeparture"] != ""
     )
     df_all["_is_realtime"] = df_all["realtime"].astype(str).str.lower() == "true"
-    df_all["_abs_delay"] = pd.to_numeric(df_all["delaySeconds"], errors="coerce").fillna(0).abs()
+    df_all["_delay"] = pd.to_numeric(df_all["delaySeconds"], errors="coerce").fillna(0)
 
     df_all = df_all.sort_values(
-        by=["_has_actual", "_is_realtime", "_abs_delay", "scrapedAt"],
+        by=["_has_actual", "_is_realtime", "_delay", "scrapedAt"],
         ascending=[False, False, False, False],
     )
     df_all = df_all.drop_duplicates(subset=dedupe_keys, keep="first")
-    df_all = df_all.drop(columns=["_has_actual", "_is_realtime", "_abs_delay"])
+    df_all = df_all.drop(columns=["_has_actual", "_is_realtime", "_delay"])
 
     after = len(df_all)
     print(f"Smart dedup: {before} -> {after} rader ({before - after} duplikater fjernet)")
