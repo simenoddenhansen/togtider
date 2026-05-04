@@ -465,10 +465,15 @@ def filter_rail_only(df):
     Filtrerer datasettet til kun å inneholde tog (transportMode == 'rail').
 
     Dette sikrer at appen viser togdata uavhengig av hvordan historikken er lagret.
+    Etter filtreringen ryddes ubrukte category-verdier bort, slik at downstream
+    groupby/value_counts ikke produserer tomme rader for buss-/båtkategorier.
     """
     if df.empty or "transportMode" not in df.columns:
         return df
-    return df[df["transportMode"] == "rail"].copy()
+    result = df[df["transportMode"] == "rail"].copy()
+    for col in result.select_dtypes(include="category").columns:
+        result[col] = result[col].cat.remove_unused_categories()
+    return result
 
 
 def get_unique_routes(df, sort_by="alphabetical"):
