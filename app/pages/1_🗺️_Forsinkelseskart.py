@@ -239,7 +239,7 @@ df = df_all
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
-st.subheader("🗺️ Forsinkelseskart")
+st.subheader("Forsinkelseskart")
 
 # Tidshorisont (samme oppsett som "Mest forsinkede linjer")
 MAP_TIME_OPTIONS = [
@@ -269,7 +269,7 @@ render_map_section(df, df_stations)
 # Årsaker / situasjonsmeldinger (fra API)
 # ═════════════════════════════════════════════════════════════════
 
-with st.expander("💬 Hvorfor er det forsinkelse?", expanded=False):
+with st.expander("Hvorfor er det forsinkelse?", expanded=False):
     if (
         "situationSummary" not in df_all.columns
         and "situationDescription" not in df_all.columns
@@ -393,7 +393,7 @@ with st.expander("💬 Hvorfor er det forsinkelse?", expanded=False):
 # FORSINKELSESFORDELING (Plotly interaktivt histogram)
 # ═════════════════════════════════════════════════════════════════
 
-with st.expander("📊 Forsinkelsesfordeling", expanded=False):
+with st.expander("Forsinkelsesfordeling", expanded=False):
     dist_time_horizon = st.segmented_control(
         "Tidsperiode",
         options=MAP_TIME_OPTIONS,
@@ -414,12 +414,12 @@ with st.expander("📊 Forsinkelsesfordeling", expanded=False):
 
         with dist_left:
             buckets = {
-                "🟢 I rute (0 min)": (delay_min == 0).sum(),
-                "🟢 < 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
-                "🟡 1–5 min": ((delay_min >= 1) & (delay_min < 5)).sum(),
-                "🟠 5–15 min": ((delay_min >= 5) & (delay_min < 15)).sum(),
-                "🔴 15–30 min": ((delay_min >= 15) & (delay_min < 30)).sum(),
-                "🔴 30+ min": (delay_min >= 30).sum(),
+                "I rute (0 min)": (delay_min == 0).sum(),
+                "< 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
+                "1–5 min": ((delay_min >= 1) & (delay_min < 5)).sum(),
+                "5–15 min": ((delay_min >= 5) & (delay_min < 15)).sum(),
+                "15–30 min": ((delay_min >= 15) & (delay_min < 30)).sum(),
+                "30+ min": (delay_min >= 30).sum(),
             }
 
             st.markdown("**Antall avganger per forsinkelsesgruppe:**")
@@ -467,7 +467,7 @@ with st.expander("📊 Forsinkelsesfordeling", expanded=False):
 # FORSINKELSE PER TIME (døgnmønster)
 # ═════════════════════════════════════════════════════════════════
 
-with st.expander("⏰ Forsinkelse per time (døgnmønster)", expanded=False):
+with st.expander("Forsinkelse per time (døgnmønster)", expanded=False):
     hourly_time_horizon = st.segmented_control(
         "Tidsperiode",
         options=MAP_TIME_OPTIONS,
@@ -536,7 +536,7 @@ with st.expander("⏰ Forsinkelse per time (døgnmønster)", expanded=False):
 # Stolpediagrammer (Plotly interaktive, side ved side)
 # ═════════════════════════════════════════════════════════════════
 
-with st.expander("⏱️ Mest forsinkede stasjoner", expanded=False):
+with st.expander("Mest forsinkede stasjoner", expanded=False):
     stations_time_horizon = st.segmented_control(
         "Tidsperiode",
         options=MAP_TIME_OPTIONS,
@@ -591,7 +591,7 @@ with st.expander("⏱️ Mest forsinkede stasjoner", expanded=False):
         st.info("Ingen data å vise.")
 
 
-with st.expander("🚆 Mest forsinkede linjer", expanded=False):
+with st.expander("Mest forsinkede linjer", expanded=False):
     lines_time_horizon = st.segmented_control(
         "Tidsperiode",
         options=MAP_TIME_OPTIONS,
@@ -651,7 +651,7 @@ with st.expander("🚆 Mest forsinkede linjer", expanded=False):
 # ═════════════════════════════════════════════════════════════════
 
 st.markdown("---")
-st.subheader("📋 Avganger (detaljer)")
+st.subheader("Avganger (detaljer)")
 
 existing_cols = [c for c in DISPLAY_COLUMNS if c in df.columns]
 if "realtime" in df.columns:
