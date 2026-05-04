@@ -19,6 +19,7 @@ import streamlit as st
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from data_loader import (
+    DEFAULT_RECENT_DAYS_DOWNLOAD,
     OSLO_TZ,
     load_delay_data,
     load_delay_range,
@@ -75,7 +76,11 @@ MASTER_PATH = master_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
 now_oslo = datetime.now(OSLO_TZ)
 
-df_local = load_delay_data(MASTER_PATH, master_mtime)
+df_local = load_delay_data(
+    MASTER_PATH,
+    master_mtime,
+    days_back=DEFAULT_RECENT_DAYS_DOWNLOAD,
+)
 df_local = filter_rail_only(df_local)
 
 if df_local.empty:
@@ -84,19 +89,17 @@ if df_local.empty:
     st.stop()
 
 # Hva er tidligste tilgjengelige dato totalt sett (lokalt + arkiv)?
-archive_earliest = earliest_available_date()
-local_earliest_ts = df_local["scheduledDeparture"].min()
-local_earliest_date = local_earliest_ts.date() if pd.notna(local_earliest_ts) else None
+# earliest_available_date() ser på alle lokale dagfiler + arkivindeks,
+# uavhengig av at vi bare har lastet de siste DEFAULT_RECENT_DAYS_DOWNLOAD i minnet.
+earliest_overall = earliest_available_date()
+loaded_earliest_ts = df_local["scheduledDeparture"].min()
+loaded_earliest_date = loaded_earliest_ts.date() if pd.notna(loaded_earliest_ts) else None
 
-if archive_earliest is not None and local_earliest_date is not None:
-    earliest_overall = min(archive_earliest, local_earliest_date)
-elif archive_earliest is not None:
-    earliest_overall = archive_earliest
-else:
-    earliest_overall = local_earliest_date
+if earliest_overall is None:
+    earliest_overall = loaded_earliest_date
 
 archive_available = bool(archive_base_url())
-df_master = df_local  # vil byttes ut hvis brukeren ber om data utenfor lokalt vindu
+df_master = df_local  # vil byttes ut hvis brukeren ber om data utenfor lastet vindu
 
 # ─── Eksportkonfigurasjon ─────────────────────────────────────────
 
@@ -177,10 +180,13 @@ with col_right:
             date_end = max_date_value
             st.caption(f"📆 Hele perioden: {date_start} → {date_end}")
 
-        if archive_available and local_earliest_date and date_start < local_earliest_date:
+        if (
+            loaded_earliest_date
+            and date_start < loaded_earliest_date
+        ):
             st.caption(
-                "ℹ️ Perioden går lenger tilbake enn det som ligger lokalt — "
-                "manglende dager hentes fra arkivet ved nedlasting."
+                "ℹ️ Perioden går lenger tilbake enn det som er forhåndslastet "
+                "— manglende dager leses fra disk/arkiv ved nedlasting."
             )
     else:
         date_start = None
@@ -222,15 +228,19 @@ with col_format:
 
 # ─── Bygg eksport-DataFrame ──────────────────────────────────────
 
-needs_archive = (
+needs_extended_load = (
     date_start is not None
-    and local_earliest_date is not None
-    and date_start < local_earliest_date
-    and archive_available
+    and loaded_earliest_date is not None
+    and date_start < loaded_earliest_date
 )
 
-if needs_archive:
-    with st.spinner("Henter arkiverte dager fra fjernlageret …"):
+if needs_extended_load:
+    spinner_msg = (
+        "Henter arkiverte dager fra fjernlageret …"
+        if archive_available
+        else "Leser eldre dager fra historikken …"
+    )
+    with st.spinner(spinner_msg):
         df_export = filter_rail_only(load_delay_range(date_start, date_end))
 else:
     df_export = df_master.copy()

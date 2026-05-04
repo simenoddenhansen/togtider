@@ -24,7 +24,33 @@ LEGACY_MASTER_FILENAME = "forsinkelser_master.csv"
 ARCHIVE_BASE_URL_ENV = "TOGTIDER_ARCHIVE_BASE_URL"
 ARCHIVE_INDEX_FILENAME = "archive_index.json"
 ARCHIVE_FETCH_TIMEOUT = 15
-DELAY_DATA_NORMALIZATION_VERSION = 2
+DELAY_DATA_NORMALIZATION_VERSION = 3
+
+# Lavkardinalitet-kolonner som komprimeres kraftig som category-dtype.
+_CATEGORICAL_COLUMNS = frozenset({
+    "lineName", "lineCode", "transportMode", "stationName", "stationId",
+    "destination", "delaySource", "lineId",
+})
+
+# Standardkolonner for dashboardet (Togforsinkelser.py + felles sidebar).
+DASHBOARD_COLUMNS = (
+    "scheduledDeparture", "delaySeconds", "isDelayed",
+    "lineName", "transportMode", "stationName",
+)
+
+# Standardkolonner for kartsiden (Forsinkelseskart.py).
+MAP_COLUMNS = (
+    "scheduledDeparture", "delaySeconds", "isDelayed",
+    "lineName", "lineCode", "transportMode",
+    "stationId", "stationName", "destination",
+    "delaySource", "realtime",
+)
+
+# Antall dager med lokale data som lastes inn som standard. Eldre data
+# hentes fra arkivet ved behov via load_delay_range / fetch_archived_day.
+DEFAULT_RECENT_DAYS_DASHBOARD = 60   # 30-dagers KPI sammenligner mot forrige 30-dagers periode
+DEFAULT_RECENT_DAYS_MAP = 30
+DEFAULT_RECENT_DAYS_DOWNLOAD = 30
 
 
 def project_root():
@@ -320,11 +346,58 @@ def _normalize_delay_data(df):
     return df
 
 
-@st.cache_data
-def _load_delay_file(file_path, mtime, normalization_version=DELAY_DATA_NORMALIZATION_VERSION):
-    """Laster og parser én forsinkelsesfil. Cachet per (sti, mtime)."""
+def _filename_date(path):
+    """Returnerer YYYY-MM-DD-datoen fra en historikkfil, eller None."""
+    name = os.path.basename(path)
+    if not (name.startswith("forsinkelser_") and name.endswith(".csv")):
+        return None
+    key = name[len("forsinkelser_") : -len(".csv")]
     try:
-        df_part = pd.read_csv(file_path, low_memory=False)
+        return date.fromisoformat(key)
+    except ValueError:
+        return None
+
+
+def _filter_recent_files(files, days_back, today=None):
+    """
+    Returnerer kun historikkfiler innenfor de siste ``days_back`` dagene.
+    Filer uten gjenkjennelig datostempel (f.eks. legacy master-fil) beholdes.
+    """
+    if days_back is None:
+        return files
+    if today is None:
+        today = datetime.now(OSLO_TZ).date()
+    cutoff = today - timedelta(days=days_back)
+    kept = []
+    for file_path in files:
+        d = _filename_date(file_path)
+        if d is None or d >= cutoff:
+            kept.append(file_path)
+    return kept
+
+
+def _apply_categorical_dtypes(df):
+    """Konverterer lavkardinalitet-strengkolonner til category for memory."""
+    for col in df.columns:
+        if col in _CATEGORICAL_COLUMNS and df[col].dtype == object:
+            df[col] = df[col].astype("category")
+    return df
+
+
+@st.cache_data
+def _load_delay_file(
+    file_path,
+    mtime,
+    columns=None,
+    normalization_version=DELAY_DATA_NORMALIZATION_VERSION,
+):
+    """Laster og parser én forsinkelsesfil. Cachet per (sti, mtime, kolonner)."""
+    read_kwargs = {"low_memory": False}
+    if columns is not None:
+        read_kwargs["usecols"] = lambda name: name in columns or name.startswith("Unnamed")
+
+    try:
+        df_part = pd.read_csv(file_path, **read_kwargs)
     except Exception as e:
         st.error(f"Kunne ikke lese datafilen {file_path}: {e}")
         return pd.DataFrame()
@@ -332,19 +405,30 @@ def _load_delay_file(file_path, mtime, normalization_version=DELAY_DATA_NORMALIZ
     df_part = df_part.loc[:, ~df_part.columns.str.contains("^Unnamed")]
     if df_part.empty:
         return pd.DataFrame()
-    return _normalize_delay_data(df_part)
+
+    df_part = _normalize_delay_data(df_part)
+    return _apply_categorical_dtypes(df_part)
 
 
-def load_delay_data(path, mtime):
+def load_delay_data(path, mtime, days_back=None, columns=None):
     """
     Laster og parser forsinkelsesdata fra daglige historikkfiler.
 
-    Cacher per fil basert på filens mtime, slik at ny dag-fil bare leser den
-    nye filen og returnerer concat av allerede-cachete frames.
+    Parametere:
+        path: Sti til historikkmappen (eller legacy master-fil).
+        mtime: Sist-endret-tid for cache-invalidering.
+        days_back: Hvis satt, last kun filer for de siste N dagene.
+        columns: Hvis satt, last kun disse kolonnene (memory-optimalisering).
     """
     files = list_delay_data_files(path)
     if mtime is None or not files:
         return pd.DataFrame()
+
+    files = _filter_recent_files(files, days_back)
+    if not files:
+        return pd.DataFrame()
+
+    columns_key = tuple(columns) if columns is not None else None
 
     frames = []
     for file_path in files:
@@ -352,14 +436,15 @@ def load_delay_data(path, mtime):
             file_mtime = os.path.getmtime(file_path)
         except OSError:
             continue
-        df_part = _load_delay_file(file_path, file_mtime)
+        df_part = _load_delay_file(file_path, file_mtime, columns=columns_key)
         if not df_part.empty:
             frames.append(df_part)
 
     if not frames:
         return pd.DataFrame()
 
-    return pd.concat(frames, ignore_index=True)
+    result = pd.concat(frames, ignore_index=True)
+    return _apply_categorical_dtypes(result)
 
 
 @st.cache_data

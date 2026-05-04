@@ -29,6 +29,8 @@ except ModuleNotFoundError:
 
 # Lokale delte moduler
 from data_loader import (
+    DASHBOARD_COLUMNS,
+    DEFAULT_RECENT_DAYS_DASHBOARD,
     OSLO_TZ,
     load_delay_data,
     master_csv_path,
@@ -72,7 +74,12 @@ MASTER_PATH = master_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
 now_oslo = datetime.now(OSLO_TZ)
 
-df_master = load_delay_data(MASTER_PATH, master_mtime)
+df_master = load_delay_data(
+    MASTER_PATH,
+    master_mtime,
+    days_back=DEFAULT_RECENT_DAYS_DASHBOARD,
+    columns=DASHBOARD_COLUMNS,
+)
 
 # Filtrer til kun tog (rail) på datanivå
 df_master = filter_rail_only(df_master)

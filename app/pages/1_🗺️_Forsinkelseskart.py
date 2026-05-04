@@ -27,6 +27,8 @@ except ModuleNotFoundError:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from data_loader import (
+    DEFAULT_RECENT_DAYS_MAP,
+    MAP_COLUMNS,
     OSLO_TZ,
     load_delay_data,
     load_stations,
@@ -201,7 +203,12 @@ STATIONS_PATH = stations_csv_path()
 master_mtime = get_mtime(MASTER_PATH)
 now_oslo = datetime.now(OSLO_TZ)
 
-df_all = load_delay_data(MASTER_PATH, master_mtime)
+df_all = load_delay_data(
+    MASTER_PATH,
+    master_mtime,
+    days_back=DEFAULT_RECENT_DAYS_MAP,
+    columns=MAP_COLUMNS,
+)
 df_stations = load_stations(STATIONS_PATH)
 
 # Filtrer til kun tog (rail) på datanivå
