@@ -59,7 +59,12 @@ COLUMN_LABELS_FULL = {
 
 # ─── Sidekonfigurasjon ────────────────────────────────────────────
 
-st.set_page_config(page_title="Last ned data", page_icon="📥", layout="wide")
+st.set_page_config(
+    page_title="Last ned data",
+    page_icon="📥",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 inject_responsive_css()
 render_top_nav("Last ned")

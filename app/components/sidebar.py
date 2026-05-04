@@ -51,7 +51,7 @@ def render_sidebar_filters(df, page_key, now_oslo=None):
     Rendrer inline-filtre og returnerer filtrert DataFrame.
 
     Filtre:
-    - Tidsperiode (24t / 7d / 30d / Alle)
+    - Tidsperiode
     - Togrute (selectbox med søk)
     - Stasjon
     - Kun forsinkede (checkbox)
@@ -59,7 +59,7 @@ def render_sidebar_filters(df, page_key, now_oslo=None):
     Parametere:
         df: DataFrame med forsinkelsesdata (allerede filtrert til rail).
         page_key: Unik nøkkel-prefix for å unngå widget-kollisjoner mellom sider.
-        now_oslo: Nåværende tidspunkt i Oslo-tid.
+        now_oslo: Nåværende tidspunkt i Oslo-tid (beholdt for bakoverkompatibilitet).
 
     Returnerer:
         Tuple av (filtrert_df, selected_route, selected_time)
@@ -72,31 +72,22 @@ def render_sidebar_filters(df, page_key, now_oslo=None):
         unsafe_allow_html=True,
     )
 
-    # ── Tidsperiode ──
-    time_options = ["Siste 24 timer", "Siste 7 dager", "Siste 30 dager", "Alle"]
-    filter_cols = st.columns([1.1, 1.1, 1.7, 1.5, 0.9])
+    filter_cols = st.columns([1.4, 2.2, 1.8, 1.0])
+
     with filter_cols[0]:
         selected_time = st.selectbox(
             "Tidsperiode",
-            options=time_options,
+            options=["Siste 24 timer", "Siste 7 dager", "Siste 30 dager", "Alle"],
             index=2,
             key=f"{page_key}_time_filter",
         )
-    df = apply_time_filter(df, selected_time, now_oslo)
+    if selected_time != "Alle":
+        df = apply_time_filter(df, selected_time, now_oslo=now_oslo)
 
-    # ── Rutesortering ──
-    with filter_cols[1]:
-        sort_mode = st.selectbox(
-            "Sorter ruter",
-            options=["Alfabetisk (A–Å)", "Mest trafikkerte først"],
-            index=0,
-            key=f"{page_key}_route_sort",
-        )
-    sort_by = "traffic" if "trafikkerte" in sort_mode else "alphabetical"
-    all_routes = get_unique_routes(df, sort_by=sort_by)
+    all_routes = get_unique_routes(df, sort_by="alphabetical")
 
     # ── Rutevalg ──
-    with filter_cols[2]:
+    with filter_cols[1]:
         selected_route = st.selectbox(
             "Velg togrute",
             options=all_routes,
@@ -113,7 +104,7 @@ def render_sidebar_filters(df, page_key, now_oslo=None):
         if "stationName" in df.columns
         else []
     )
-    with filter_cols[3]:
+    with filter_cols[2]:
         selected_station = st.selectbox(
             "Filtrer på stasjon",
             options=all_stations,
@@ -125,7 +116,7 @@ def render_sidebar_filters(df, page_key, now_oslo=None):
         df = df[df["stationName"] == selected_station]
 
     # ── Kun forsinkede ──
-    with filter_cols[4]:
+    with filter_cols[3]:
         st.write("")
         only_delayed = st.checkbox(
             "Kun forsinkede", value=False, key=f"{page_key}_only_delayed"

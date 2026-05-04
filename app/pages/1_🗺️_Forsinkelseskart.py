@@ -184,7 +184,12 @@ def render_map_section(df, df_stations):
 
 # ─── Sidekonfigurasjon ────────────────────────────────────────────
 
-st.set_page_config(page_title="Forsinkelseskart", page_icon="🗺️", layout="wide")
+st.set_page_config(
+    page_title="Forsinkelseskart",
+    page_icon="🗺️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 inject_responsive_css()
 render_top_nav("Kart")

@@ -59,6 +59,7 @@ st.set_page_config(
     page_title="Togforsinkelser",
     page_icon="🚆",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 inject_responsive_css()
@@ -150,66 +151,78 @@ else:
 
 st.markdown("---")
 
-# "Forsinkede"-kortet teller kun avganger forsinket >3 min, mens
-# Punktlighet/delta beholder den klassiske isDelayed-definisjonen.
-DELAY_KPI_THRESHOLD_SECONDS = 180
+# KPI-terskler
+DELAY_KPI_THRESHOLD_SECONDS = 180   # Forsinket = mer enn 3 min
+PUNCTUALITY_THRESHOLD_SECONDS = 60  # Punktlig = under 1 min
 
-total_n = len(df)
-delayed_n = int(df["isDelayed"].sum()) if "isDelayed" in df.columns else 0
-pct_delayed = (100 * delayed_n / total_n) if total_n > 0 else 0
+# Norske månedsforkortelser for caption-tekst.
+_NO_MND = [
+    "jan", "feb", "mar", "apr", "mai", "jun",
+    "jul", "aug", "sep", "okt", "nov", "des",
+]
+
+# KPI-ene viser hele lastet historikk (uavhengig av sidebar-tidsfilter)
+# slik at alle fire kortene refererer samme tidsspenn. Sidebar-rutevalget
+# respekteres fortsatt for å støtte drill-down på enkeltlinjer.
+df_kpi = df_master
+if selected_route is not None and "lineName" in df_kpi.columns:
+    df_kpi = df_kpi[df_kpi["lineName"] == selected_route]
+
+# Tidligste dato i lastet datasett — "max dato tilbake".
+data_start_date = None
+if "scheduledDeparture" in df_kpi.columns and not df_kpi.empty:
+    earliest_ts = df_kpi["scheduledDeparture"].min()
+    if pd.notna(earliest_ts):
+        data_start_date = earliest_ts.date()
+
+if data_start_date is not None:
+    since_caption = (
+        f"Siden {data_start_date.day}. "
+        f"{_NO_MND[data_start_date.month - 1]} {data_start_date.year}"
+    )
+else:
+    since_caption = "Siden start"
+
+total_n = len(df_kpi)
 severely_delayed_n = (
-    int((df["delaySeconds"] > DELAY_KPI_THRESHOLD_SECONDS).sum())
-    if "delaySeconds" in df.columns
+    int((df_kpi["delaySeconds"] > DELAY_KPI_THRESHOLD_SECONDS).sum())
+    if "delaySeconds" in df_kpi.columns
     else 0
 )
 pct_severely_delayed = (100 * severely_delayed_n / total_n) if total_n > 0 else 0
-avg_delay_min = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
-punctuality = 100 - pct_delayed
-
-# Beregn delta vs. forrige tilsvarende periode for kontekst
-delta_text = None
-if "scheduledDeparture" in df_master.columns and selected_time != "Alle":
-    period_map = {
-        "Siste 24 timer": timedelta(hours=24),
-        "Siste 7 dager": timedelta(days=7),
-        "Siste 30 dager": timedelta(days=30),
-    }
-    period = period_map.get(selected_time, timedelta(days=30))
-    prev_start = now_oslo - (period * 2)
-    prev_end = now_oslo - period
-
-    # Bruk kun togdata for sammenligning
-    df_prev = df_master[
-        (df_master["scheduledDeparture"] >= prev_start)
-        & (df_master["scheduledDeparture"] < prev_end)
-    ]
-    # Filtrer på valgt rute hvis relevant
-    if selected_route is not None and "lineName" in df_prev.columns:
-        df_prev = df_prev[df_prev["lineName"] == selected_route]
-
-    if len(df_prev) > 0 and "isDelayed" in df_prev.columns:
-        prev_pct = 100 * df_prev["isDelayed"].mean()
-        prev_punct = 100 - prev_pct
-        delta_punct = punctuality - prev_punct
-        delta_text = f"{delta_punct:+.1f}pp"
+avg_delay_min = (df_kpi["delaySeconds"].mean() / 60) if total_n > 0 else 0
+on_time_n = (
+    int((df_kpi["delaySeconds"] < PUNCTUALITY_THRESHOLD_SECONDS).sum())
+    if "delaySeconds" in df_kpi.columns
+    else 0
+)
+punctuality = (100 * on_time_n / total_n) if total_n > 0 else 0
 
 kpi_cols = st.columns(4)
 with kpi_cols[0]:
-    styled_kpi("Totale avganger", f"{total_n:,}".replace(",", " "))
+    styled_kpi(
+        "Totale togavganger",
+        f"{total_n:,}".replace(",", " "),
+        caption=since_caption,
+    )
 with kpi_cols[1]:
     styled_kpi(
-        "Forsinkede (>3 min)",
+        "Andel forsinkede (>3 min)",
         f"{severely_delayed_n:,} ({pct_severely_delayed:.0f}%)".replace(",", " "),
+        caption=since_caption,
     )
 with kpi_cols[2]:
-    styled_kpi("Snitt forsinkelse", f"{avg_delay_min:.1f} min")
+    styled_kpi(
+        "Snitt forsinkelse",
+        f"{avg_delay_min:.1f} min",
+        caption=since_caption,
+    )
 with kpi_cols[3]:
     emoji = "🟢" if punctuality >= 90 else ("🟡" if punctuality >= 75 else "🔴")
     styled_kpi(
         "Punktlighet",
         f"{emoji} {punctuality:.1f}%",
-        delta=delta_text,
-        delta_color="normal",
+        caption="< 1 min forsinkelse",
     )
 
 
