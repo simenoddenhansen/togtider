@@ -39,7 +39,7 @@ from data_loader import (
 )
 from components.kpi import styled_kpi
 from components.footer import entur_footer
-from components.sidebar import render_sidebar_filters
+
 from components.responsive_css import inject_responsive_css
 from components.top_nav import render_top_nav
 from utils import (
@@ -228,11 +228,9 @@ if df_all.empty:
     st.stop()
 
 
-# ─── Sidebar-filtre (kun tog) ────────────────────────────────────
-
-df, selected_route, selected_time = render_sidebar_filters(
-    df_all, page_key="map", now_oslo=now_oslo
-)
+df = df_all
+selected_route = None
+selected_time = "Alle"
 
 
 # ─── KPI-er ──────────────────────────────────────────────────────
