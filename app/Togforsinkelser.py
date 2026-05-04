@@ -40,7 +40,7 @@ from data_loader import (
 )
 from components.kpi import styled_kpi
 from components.footer import entur_footer
-from components.sidebar import render_sidebar_filters
+from components.sidebar import apply_time_filter, render_sidebar_filters
 from components.responsive_css import inject_responsive_css
 from components.top_nav import render_top_nav
 from schedule_utils import SCRAPE_INTERVAL_MINUTES, get_next_scheduled_update
@@ -432,9 +432,34 @@ else:
 st.markdown("---")
 st.subheader("🚨 Mest forsinkede linjer")
 
-if not df.empty and "lineName" in df.columns:
+# Lokalt tidsvindu for denne grafen (overstyrer sidebar-tidsfilter).
+# "Maks tid" tilsvarer alle data som er lastet inn (opptil
+# DEFAULT_RECENT_DAYS_DASHBOARD dager tilbake).
+LINES_CHART_TIME_OPTIONS = [
+    "Siste 24 timer",
+    "Siste 7 dager",
+    "Siste 30 dager",
+    "Maks tid",
+]
+lines_chart_time = st.segmented_control(
+    "Tidsperiode for grafen",
+    options=LINES_CHART_TIME_OPTIONS,
+    default="Siste 7 dager",
+    key="dash_lines_time",
+    label_visibility="collapsed",
+)
+if lines_chart_time is None:
+    lines_chart_time = "Siste 7 dager"
+
+# Bygg datasettet fra df_master slik at grafen kan vise data utover
+# sidebar-tidsfilteret. Sidebar-rutevalget respekteres fortsatt.
+df_lines = apply_time_filter(df_master, lines_chart_time, now_oslo)
+if selected_route is not None and "lineName" in df_lines.columns:
+    df_lines = df_lines[df_lines["lineName"] == selected_route]
+
+if not df_lines.empty and "lineName" in df_lines.columns:
     line_stats = (
-        df.groupby("lineName")
+        df_lines.groupby("lineName", observed=True)
         .agg(
             avgDelay=("delaySeconds", "mean"),
             delayedPct=("isDelayed", "mean"),
@@ -483,7 +508,7 @@ if not df.empty and "lineName" in df.columns:
     )
     st.plotly_chart(fig_lines, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
 else:
-    st.caption("Ingen linjedata tilgjengelig.")
+    st.caption("Ingen linjedata tilgjengelig for valgt tidsvindu.")
 
 
 # ═════════════════════════════════════════════════════════════════
