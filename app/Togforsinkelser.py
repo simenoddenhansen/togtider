@@ -150,9 +150,19 @@ else:
 
 st.markdown("---")
 
+# "Forsinkede"-kortet teller kun avganger forsinket >3 min, mens
+# Punktlighet/delta beholder den klassiske isDelayed-definisjonen.
+DELAY_KPI_THRESHOLD_SECONDS = 180
+
 total_n = len(df)
 delayed_n = int(df["isDelayed"].sum()) if "isDelayed" in df.columns else 0
 pct_delayed = (100 * delayed_n / total_n) if total_n > 0 else 0
+severely_delayed_n = (
+    int((df["delaySeconds"] > DELAY_KPI_THRESHOLD_SECONDS).sum())
+    if "delaySeconds" in df.columns
+    else 0
+)
+pct_severely_delayed = (100 * severely_delayed_n / total_n) if total_n > 0 else 0
 avg_delay_min = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
 punctuality = 100 - pct_delayed
 
@@ -188,8 +198,8 @@ with kpi_cols[0]:
     styled_kpi("Totale avganger", f"{total_n:,}".replace(",", " "))
 with kpi_cols[1]:
     styled_kpi(
-        "Forsinkede",
-        f"{delayed_n:,} ({pct_delayed:.0f}%)".replace(",", " "),
+        "Forsinkede (>3 min)",
+        f"{severely_delayed_n:,} ({pct_severely_delayed:.0f}%)".replace(",", " "),
     )
 with kpi_cols[2]:
     styled_kpi("Snitt forsinkelse", f"{avg_delay_min:.1f} min")
