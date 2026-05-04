@@ -44,6 +44,9 @@ MAP_COLUMNS = (
     "lineName", "lineCode", "transportMode",
     "stationId", "stationName", "destination",
     "delaySource", "realtime",
+    "cancellation",
+    "situationSummary", "situationDescription",
+    "situationReportType", "situationSeverity",
 )
 
 # Antall dager med lokale data som lastes inn som standard. Eldre data

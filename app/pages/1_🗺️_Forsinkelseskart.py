@@ -37,8 +37,8 @@ from data_loader import (
     get_mtime,
     filter_rail_only,
 )
-from components.kpi import styled_kpi
 from components.footer import entur_footer
+from components.sidebar import apply_time_filter
 
 from components.responsive_css import inject_responsive_css
 from components.top_nav import render_top_nav
@@ -137,9 +137,6 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
 
 def render_map_section(df, df_stations):
     """Rendrer hovedkartet for forsinkelser."""
-    st.markdown("---")
-    st.subheader("🗺️ Forsinkelseskart")
-
     if df.empty or df_stations.empty:
         st.info("Ingen data å vise på kart.")
         return
@@ -149,6 +146,11 @@ def render_map_section(df, df_stations):
         .agg(avgDelay=("delaySeconds", "mean"), count=("isDelayed", "count"))
         .reset_index()
     )
+
+    # Ved korte tidshorisonter kan det forekomme NaN i delaySeconds.
+    # Sørg for at kartet alltid får en numerisk verdi å fargekode.
+    if "avgDelay" in station_delays.columns:
+        station_delays["avgDelay"] = pd.to_numeric(station_delays["avgDelay"], errors="coerce").fillna(0)
 
     df_map = station_delays.merge(
         df_stations[["id", "name", "latitude", "longitude"]],
@@ -166,7 +168,8 @@ def render_map_section(df, df_stations):
         st.info("Kunne ikke koble forsinkelsesdata med stasjonskart.")
         return
 
-    max_delay_val = max(df_map["avgDelay"].max(), 1)
+    max_delay = df_map["avgDelay"].max(skipna=True) if "avgDelay" in df_map.columns else None
+    max_delay_val = 1 if (max_delay is None or pd.isna(max_delay) or max_delay <= 0) else float(max_delay)
     df_map["color"] = df_map["avgDelay"].apply(
         lambda d: delay_to_color(d, max_delay_val)
     )
@@ -179,22 +182,22 @@ def render_map_section(df, df_stations):
     zoom = compute_zoom(lat_spread, lng_spread)
 
     render_station_delay_map(df_map, center_lat, center_lng, zoom)
-    st.caption("🟢 Grønn = liten forsinkelse · 🟡 Gul = moderat · 🔴 Rød = stor forsinkelse")
+    st.caption("Grønn = liten forsinkelse · Gul = moderat · Rød = stor forsinkelse")
 
 
 # ─── Sidekonfigurasjon ────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Forsinkelseskart",
-    page_icon="🗺️",
+    page_icon="T",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
 inject_responsive_css()
-render_top_nav("Kart")
+render_top_nav("Kart", show_icons=False, show_brand_emoji=False)
 
-st.title("🗺️ Forsinkelseskart")
+st.title("Forsinkelseskart")
 st.caption(
     "Interaktivt kart over forsinkelser på norske togstasjoner. "
     "Grønn = liten forsinkelse · Gul = moderat · Rød = stor forsinkelse."
@@ -229,167 +232,326 @@ if df_all.empty:
 
 
 df = df_all
-selected_route = None
-selected_time = "Alle"
-
-
-# ─── KPI-er ──────────────────────────────────────────────────────
-
-st.markdown("---")
-
-kpi_cols = st.columns(4)
-total_n = len(df)
-delayed_n = int(df["isDelayed"].sum()) if "isDelayed" in df.columns else 0
-pct = (100 * delayed_n / total_n) if total_n > 0 else 0
-avg_delay = (df["delaySeconds"].mean() / 60) if total_n > 0 else 0
-max_delay = (df["delaySeconds"].max() / 60) if total_n > 0 else 0
-
-with kpi_cols[0]:
-    styled_kpi("Avganger", f"{total_n:,}".replace(",", " "))
-with kpi_cols[1]:
-    styled_kpi("Forsinkede", f"{delayed_n:,} ({pct:.0f}%)".replace(",", " "))
-with kpi_cols[2]:
-    styled_kpi("Snitt forsinkelse", f"{avg_delay:.1f} min")
-with kpi_cols[3]:
-    styled_kpi("Maks forsinkelse", f"{max_delay:.0f} min")
 
 
 # ═════════════════════════════════════════════════════════════════
 # KART (hovedopplevelse)
 # ═════════════════════════════════════════════════════════════════
 
+st.markdown("---")
+st.subheader("🗺️ Forsinkelseskart")
+
+# Tidshorisont (samme oppsett som "Mest forsinkede linjer")
+MAP_TIME_OPTIONS = [
+    "Siste 24 timer",
+    "Siste 7 dager",
+    "Siste 30 dager",
+    "Maks tid",
+]
+
+map_time_horizon = st.segmented_control(
+    "Tidshorisont",
+    options=MAP_TIME_OPTIONS,
+    default="Siste 7 dager",
+    key="map_time_horizon",
+    label_visibility="collapsed",
+)
+if map_time_horizon is None:
+    map_time_horizon = "Siste 7 dager"
+
+df = apply_time_filter(df_all, map_time_horizon, now_oslo=now_oslo)
+total_n = len(df)
+
 render_map_section(df, df_stations)
+
+
+# ═════════════════════════════════════════════════════════════════
+# Årsaker / situasjonsmeldinger (fra API)
+# ═════════════════════════════════════════════════════════════════
+
+with st.expander("💬 Hvorfor er det forsinkelse?", expanded=False):
+    if (
+        "situationSummary" not in df_all.columns
+        and "situationDescription" not in df_all.columns
+        and "delaySource" not in df_all.columns
+    ):
+        st.info("Fant ingen situasjons-/årsaksfelter i datasettet.")
+    else:
+        reasons_time_horizon = st.segmented_control(
+            "Tidsperiode",
+            options=MAP_TIME_OPTIONS,
+            default="Siste 7 dager",
+            key="map_reasons_time_horizon",
+            label_visibility="collapsed",
+        )
+        if reasons_time_horizon is None:
+            reasons_time_horizon = "Siste 7 dager"
+
+        df_reasons = apply_time_filter(df_all, reasons_time_horizon, now_oslo=now_oslo)
+
+        only_disruptions = st.checkbox(
+            "Kun forsinkede/kansellerte", value=True, key="map_reasons_only_disruptions"
+        )
+        if only_disruptions:
+            mask = pd.Series([False] * len(df_reasons), index=df_reasons.index)
+            if "delaySeconds" in df_reasons.columns:
+                delay_sec = pd.to_numeric(df_reasons["delaySeconds"], errors="coerce").fillna(0)
+                mask |= delay_sec > 0
+            elif "isDelayed" in df_reasons.columns:
+                mask |= (df_reasons["isDelayed"] == 1)
+            if "cancellation" in df_reasons.columns:
+                mask |= (df_reasons["cancellation"] == 1)
+            df_reasons = df_reasons[mask]
+
+        level = st.radio(
+            "Nivå",
+            options=["Hele nettet", "Stasjon", "Linje"],
+            index=0,
+            horizontal=True,
+            key="map_reasons_level",
+            label_visibility="collapsed",
+        )
+
+        if level == "Stasjon" and "stationName" in df_reasons.columns:
+            stations = sorted(df_reasons["stationName"].dropna().unique().tolist())
+            if not stations:
+                st.caption("Ingen stasjoner tilgjengelig for valgt filter.")
+            else:
+                selected_station = st.selectbox(
+                    "Velg stasjon",
+                    options=stations,
+                    index=0,
+                    key="map_reasons_station",
+                )
+                if selected_station:
+                    df_reasons = df_reasons[df_reasons["stationName"] == selected_station]
+        elif level == "Linje" and "lineName" in df_reasons.columns:
+            lines = sorted(df_reasons["lineName"].dropna().unique().tolist())
+            if not lines:
+                st.caption("Ingen linjer tilgjengelig for valgt filter.")
+            else:
+                selected_line = st.selectbox(
+                    "Velg linje",
+                    options=lines,
+                    index=0,
+                    key="map_reasons_line",
+                )
+                if selected_line:
+                    df_reasons = df_reasons[df_reasons["lineName"] == selected_line]
+
+        # Normaliser tekstfelter
+        df_msgs = df_reasons.copy()
+        if "situationSummary" in df_msgs.columns:
+            df_msgs["situationSummary"] = (
+                df_msgs["situationSummary"].fillna("").astype(str).str.strip()
+            )
+        else:
+            df_msgs["situationSummary"] = ""
+
+        if "situationDescription" in df_msgs.columns:
+            df_msgs["situationDescription"] = (
+                df_msgs["situationDescription"].fillna("").astype(str).str.strip()
+            )
+        else:
+            df_msgs["situationDescription"] = ""
+
+        df_msgs = df_msgs[
+            (df_msgs["situationSummary"] != "") | (df_msgs["situationDescription"] != "")
+        ]
+
+        if df_msgs.empty:
+            st.caption("Ingen situasjonsmeldinger tilgjengelig for valgt tidsperiode.")
+        else:
+            if "delaySeconds" in df_msgs.columns:
+                df_msgs["delayMin"] = (pd.to_numeric(df_msgs["delaySeconds"], errors="coerce") / 60).fillna(0)
+            else:
+                df_msgs["delayMin"] = 0
+
+            grouped = (
+                df_msgs.groupby(
+                    ["situationSummary", "situationDescription"],
+                    dropna=False,
+                )
+                .agg(
+                    hendelser=("delayMin", "size"),
+                    snitt_forsinkelse_min=("delayMin", "mean"),
+                    maks_forsinkelse_min=("delayMin", "max"),
+                )
+                .sort_values("hendelser", ascending=False)
+                .head(20)
+                .reset_index()
+            )
+
+            st.dataframe(
+                grouped,
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ═════════════════════════════════════════════════════════════════
 # FORSINKELSESFORDELING (Plotly interaktivt histogram)
 # ═════════════════════════════════════════════════════════════════
 
-st.markdown("---")
-st.subheader("📊 Forsinkelsesfordeling")
+with st.expander("📊 Forsinkelsesfordeling", expanded=False):
+    dist_time_horizon = st.segmented_control(
+        "Tidsperiode",
+        options=MAP_TIME_OPTIONS,
+        default="Siste 7 dager",
+        key="map_dist_time_horizon",
+        label_visibility="collapsed",
+    )
+    if dist_time_horizon is None:
+        dist_time_horizon = "Siste 7 dager"
 
-if not df.empty and "delaySeconds" in df.columns:
-    delay_min = df["delaySeconds"] / 60
+    df_dist = apply_time_filter(df_all, dist_time_horizon, now_oslo=now_oslo)
+    total_n_dist = len(df_dist)
 
-    dist_left, dist_right = st.columns([2, 3])
+    if not df_dist.empty and "delaySeconds" in df_dist.columns:
+        delay_min = df_dist["delaySeconds"] / 60
 
-    with dist_left:
-        # Statistikk i stiliserte kort
-        buckets = {
-            "🟢 I rute (0 min)": (delay_min == 0).sum(),
-            "🟢 < 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
-            "🟡 1–5 min": ((delay_min >= 1) & (delay_min < 5)).sum(),
-            "🟠 5–15 min": ((delay_min >= 5) & (delay_min < 15)).sum(),
-            "🔴 15–30 min": ((delay_min >= 15) & (delay_min < 30)).sum(),
-            "🔴 30+ min": (delay_min >= 30).sum(),
-        }
+        dist_left, dist_right = st.columns([2, 3])
 
-        st.markdown("**Antall avganger per forsinkelsesgruppe:**")
-        for label, count in buckets.items():
-            pct_bucket = (100 * count / total_n) if total_n > 0 else 0
-            st.markdown(f"{label}: **{count:,}** ({pct_bucket:.1f}%)")
+        with dist_left:
+            buckets = {
+                "🟢 I rute (0 min)": (delay_min == 0).sum(),
+                "🟢 < 1 min": ((delay_min > 0) & (delay_min < 1)).sum(),
+                "🟡 1–5 min": ((delay_min >= 1) & (delay_min < 5)).sum(),
+                "🟠 5–15 min": ((delay_min >= 5) & (delay_min < 15)).sum(),
+                "🔴 15–30 min": ((delay_min >= 15) & (delay_min < 30)).sum(),
+                "🔴 30+ min": (delay_min >= 30).sum(),
+            }
 
-        on_time = list(buckets.values())[0] + list(buckets.values())[1]
-        on_time_pct = (100 * on_time / total_n) if total_n > 0 else 0
-        st.markdown(f"\n**Punktlighet (< 1 min):** {on_time_pct:.1f}%")
+            st.markdown("**Antall avganger per forsinkelsesgruppe:**")
+            for label, count in buckets.items():
+                pct_bucket = (100 * count / total_n_dist) if total_n_dist > 0 else 0
+                st.markdown(f"{label}: **{count:,}** ({pct_bucket:.1f}%)")
 
-    with dist_right:
-        # Interaktivt Plotly-histogram
-        df_hist = df[["delaySeconds"]].copy()
-        df_hist["delayMin"] = df_hist["delaySeconds"] / 60
+            on_time = list(buckets.values())[0] + list(buckets.values())[1]
+            on_time_pct = (100 * on_time / total_n_dist) if total_n_dist > 0 else 0
+            st.markdown(f"\n**Punktlighet (< 1 min):** {on_time_pct:.1f}%")
 
-        # Begrens til 30 min for renere visualisering
-        df_hist["delayMin_capped"] = df_hist["delayMin"].clip(upper=30)
+        with dist_right:
+            df_hist = df_dist[["delaySeconds"]].copy()
+            df_hist["delayMin"] = df_hist["delaySeconds"] / 60
+            df_hist["delayMin_capped"] = df_hist["delayMin"].clip(upper=30)
 
-        fig_hist = px.histogram(
-            df_hist,
-            x="delayMin_capped",
-            nbins=30,
-            template=PLOTLY_TEMPLATE,
-            labels={"delayMin_capped": "Forsinkelse (min)"},
-            color_discrete_sequence=[ACCENT_COLOR],
-        )
-        fig_hist.update_layout(
-            margin=dict(l=0, r=0, t=10, b=0),
-            height=300,
-            xaxis_title="Forsinkelse (min, maks 30)",
-            yaxis_title="Antall avganger",
-            bargap=0.05,
-        )
-        fig_hist.update_traces(
-            hovertemplate="Forsinkelse: %{x:.1f} min<br>Antall: %{y}<extra></extra>"
-        )
-        st.plotly_chart(fig_hist, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
-
-else:
-    st.info("Ingen forsinkelsesdata tilgjengelig for å vise fordeling.")
+            fig_hist = px.histogram(
+                df_hist,
+                x="delayMin_capped",
+                nbins=30,
+                template=PLOTLY_TEMPLATE,
+                labels={"delayMin_capped": "Forsinkelse (min)"},
+                color_discrete_sequence=[ACCENT_COLOR],
+            )
+            fig_hist.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                height=300,
+                xaxis_title="Forsinkelse (min, maks 30)",
+                yaxis_title="Antall avganger",
+                bargap=0.05,
+            )
+            fig_hist.update_traces(
+                hovertemplate="Forsinkelse: %{x:.1f} min<br>Antall: %{y}<extra></extra>"
+            )
+            st.plotly_chart(
+                fig_hist,
+                use_container_width=True,
+                config=PLOTLY_STATIC_CONFIG,
+            )
+    else:
+        st.info("Ingen forsinkelsesdata tilgjengelig for å vise fordeling.")
 
 
 # ═════════════════════════════════════════════════════════════════
 # FORSINKELSE PER TIME (døgnmønster)
 # ═════════════════════════════════════════════════════════════════
 
-st.markdown("---")
-st.subheader("⏰ Forsinkelse per time (døgnmønster)")
+with st.expander("⏰ Forsinkelse per time (døgnmønster)", expanded=False):
+    hourly_time_horizon = st.segmented_control(
+        "Tidsperiode",
+        options=MAP_TIME_OPTIONS,
+        default="Siste 7 dager",
+        key="map_hourly_time_horizon",
+        label_visibility="collapsed",
+    )
+    if hourly_time_horizon is None:
+        hourly_time_horizon = "Siste 7 dager"
 
-if not df.empty and "scheduledDeparture" in df.columns:
-    df_hourly = df.dropna(subset=["scheduledDeparture"]).copy()
-    df_hourly["hour"] = df_hourly["scheduledDeparture"].dt.hour
+    df_hourly_base = apply_time_filter(df_all, hourly_time_horizon, now_oslo=now_oslo)
 
-    hourly_stats = (
-        df_hourly.groupby("hour")
-        .agg(
-            avgDelay=("delaySeconds", lambda x: x.mean() / 60),
-            count=("isDelayed", "count"),
+    if not df_hourly_base.empty and "scheduledDeparture" in df_hourly_base.columns:
+        df_hourly = df_hourly_base.dropna(subset=["scheduledDeparture"]).copy()
+        df_hourly["hour"] = df_hourly["scheduledDeparture"].dt.hour
+
+        hourly_stats = (
+            df_hourly.groupby("hour")
+            .agg(
+                avgDelay=("delaySeconds", lambda x: x.mean() / 60),
+                count=("isDelayed", "count"),
+            )
+            .reindex(range(24), fill_value=0)
+            .reset_index()
         )
-        .reindex(range(24), fill_value=0)
-        .reset_index()
-    )
-    hourly_stats.columns = ["hour", "avgDelay", "count"]
+        hourly_stats.columns = ["hour", "avgDelay", "count"]
 
-    fig_hourly = px.bar(
-        hourly_stats,
-        x="hour",
-        y="avgDelay",
-        template=PLOTLY_TEMPLATE,
-        labels={"hour": "Time", "avgDelay": "Snitt forsinkelse (min)"},
-        color="avgDelay",
-        color_continuous_scale=DELAY_COLOR_SCALE,
-    )
-    fig_hourly.update_layout(
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=280,
-        xaxis=dict(
-            tickmode="array",
-            tickvals=list(range(24)),
-            ticktext=[f"{h:02d}" for h in range(24)],
-        ),
-        coloraxis_showscale=False,
-        yaxis_title="Snitt forsinkelse (min)",
-        xaxis_title="Time på døgnet",
-    )
-    fig_hourly.update_traces(
-        hovertemplate="<b>Kl %{x}:00</b><br>Snitt: %{y:.1f} min<br>Avganger: %{customdata[0]}<extra></extra>",
-        customdata=hourly_stats[["count"]].values,
-    )
-    st.plotly_chart(fig_hourly, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
-else:
-    st.info("Ingen data tilgjengelig.")
+        fig_hourly = px.bar(
+            hourly_stats,
+            x="hour",
+            y="avgDelay",
+            template=PLOTLY_TEMPLATE,
+            labels={"hour": "Time", "avgDelay": "Snitt forsinkelse (min)"},
+            color="avgDelay",
+            color_continuous_scale=DELAY_COLOR_SCALE,
+        )
+        fig_hourly.update_layout(
+            margin=dict(l=0, r=0, t=10, b=0),
+            height=280,
+            xaxis=dict(
+                tickmode="array",
+                tickvals=list(range(24)),
+                ticktext=[f"{h:02d}" for h in range(24)],
+            ),
+            coloraxis_showscale=False,
+            yaxis_title="Snitt forsinkelse (min)",
+            xaxis_title="Time på døgnet",
+        )
+        fig_hourly.update_traces(
+            hovertemplate=(
+                "<b>Kl %{x}:00</b><br>Snitt: %{y:.1f} min<br>"
+                "Avganger: %{customdata[0]}<extra></extra>"
+            ),
+            customdata=hourly_stats[["count"]].values,
+        )
+        st.plotly_chart(
+            fig_hourly,
+            use_container_width=True,
+            config=PLOTLY_STATIC_CONFIG,
+        )
+    else:
+        st.info("Ingen data tilgjengelig.")
 
 
 # ═════════════════════════════════════════════════════════════════
 # Stolpediagrammer (Plotly interaktive, side ved side)
 # ═════════════════════════════════════════════════════════════════
 
-st.markdown("---")
+with st.expander("⏱️ Mest forsinkede stasjoner", expanded=False):
+    stations_time_horizon = st.segmented_control(
+        "Tidsperiode",
+        options=MAP_TIME_OPTIONS,
+        default="Siste 7 dager",
+        key="map_stations_time_horizon",
+        label_visibility="collapsed",
+    )
+    if stations_time_horizon is None:
+        stations_time_horizon = "Siste 7 dager"
 
-chart_left, chart_right = st.columns(2)
+    df_stations_chart = apply_time_filter(df_all, stations_time_horizon, now_oslo=now_oslo)
 
-with chart_left:
-    st.subheader("⏱️ Mest forsinkede stasjoner")
-    if not df.empty and "delaySeconds" in df.columns:
+    if not df_stations_chart.empty and "delaySeconds" in df_stations_chart.columns:
         station_stats = (
-            df.groupby("stationName")["delaySeconds"]
+            df_stations_chart.groupby("stationName")["delaySeconds"]
             .mean()
             .div(60)
             .sort_values(ascending=True)
@@ -418,17 +580,33 @@ with chart_left:
             fig_stations.update_traces(
                 hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
             )
-            st.plotly_chart(fig_stations, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
+            st.plotly_chart(
+                fig_stations,
+                use_container_width=True,
+                config=PLOTLY_STATIC_CONFIG,
+            )
         else:
             st.info("Ingen data å vise.")
     else:
         st.info("Ingen data å vise.")
 
-with chart_right:
-    st.subheader("🚆 Mest forsinkede linjer")
-    if not df.empty and "lineName" in df.columns:
+
+with st.expander("🚆 Mest forsinkede linjer", expanded=False):
+    lines_time_horizon = st.segmented_control(
+        "Tidsperiode",
+        options=MAP_TIME_OPTIONS,
+        default="Siste 7 dager",
+        key="map_lines_time_horizon",
+        label_visibility="collapsed",
+    )
+    if lines_time_horizon is None:
+        lines_time_horizon = "Siste 7 dager"
+
+    df_lines_chart = apply_time_filter(df_all, lines_time_horizon, now_oslo=now_oslo)
+
+    if not df_lines_chart.empty and "lineName" in df_lines_chart.columns:
         line_stats = (
-            df.groupby("lineName")["delaySeconds"]
+            df_lines_chart.groupby("lineName")["delaySeconds"]
             .mean()
             .div(60)
             .sort_values(ascending=True)
@@ -457,7 +635,11 @@ with chart_right:
             fig_lines.update_traces(
                 hovertemplate="<b>%{y}</b><br>Snitt: %{x:.1f} min<extra></extra>"
             )
-            st.plotly_chart(fig_lines, use_container_width=True, config=PLOTLY_STATIC_CONFIG)
+            st.plotly_chart(
+                fig_lines,
+                use_container_width=True,
+                config=PLOTLY_STATIC_CONFIG,
+            )
         else:
             st.info("Ingen data å vise.")
     else:
