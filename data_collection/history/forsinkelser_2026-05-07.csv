@@ -1,2 +1,2 @@
 stationId,stationName,scheduledDeparture,expectedDeparture,actualDeparture,delaySeconds,isDelayed,destination,lineId,lineName,lineCode,transportMode,serviceJourneyId,realtime,delaySource,cancellation,situationSummary,situationDescription,situationReportType,situationSeverity,scrapedAt
-NSR:StopPlace:58925,Gausel stasjon,2026-05-07T02:49:00+02:00,2026-05-06T02:49:24+02:00,,0.0,0,Sandnes via Varatun,KOL:Line:8_1002,2,2,bus,KOL:ServiceJourney:1002_260422135546377_1090,True,expected,False,,,,,2026-05-06T02:31:14.353709+02:00
+NSR:StopPlace:58925,Gausel stasjon,2026-05-07T02:49:00+02:00,2026-05-06T02:49:24+02:00,,0.0,0,Sandnes via Varatun,KOL:Line:8_1002,2,2,bus,KOL:ServiceJourney:1002_260422135546377_1090,True,expected,False,,,,,2026-05-06T02:41:09.221461+02:00
