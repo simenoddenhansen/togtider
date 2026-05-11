@@ -3,11 +3,19 @@
 import streamlit as st
 
 
+# (filsti, etikett, ikon) for navigasjonslenkene, i visningsrekkefølge.
+_NAV_ITEMS = [
+    ("Togforsinkelser.py", "Kart", "🗺️"),
+    ("pages/1_Oversikt.py", "Oversikt", None),
+    ("pages/2_Last_ned_data.py", "Last ned", None),
+]
+
+
 def render_top_nav(active_page, *, show_icons=True, show_brand_emoji=True):
     """Rendrer horisontal navigasjon på toppen av alle sider."""
     st.markdown('<div class="top-nav-shell">', unsafe_allow_html=True)
 
-    brand_col, home_col, map_col, download_col = st.columns([2.4, 1, 1, 1.2])
+    brand_col, nav1_col, nav2_col, download_col = st.columns([2.4, 1, 1, 1.2])
 
     with brand_col:
         brand_text = "🚆 Togforsinkelser" if show_brand_emoji else "Togforsinkelser"
@@ -15,46 +23,13 @@ def render_top_nav(active_page, *, show_icons=True, show_brand_emoji=True):
             f'<div class="top-nav-brand">{brand_text}</div>',
             unsafe_allow_html=True,
         )
-    with home_col:
-        if show_icons:
+
+    for col, (path, label, icon) in zip([nav1_col, nav2_col, download_col], _NAV_ITEMS):
+        with col:
             st.page_link(
-                "Togforsinkelser.py",
-                label="Oversikt",
-                icon="📊",
-                use_container_width=True,
-            )
-        else:
-            st.page_link(
-                "Togforsinkelser.py",
-                label="Oversikt",
-                use_container_width=True,
-            )
-    with map_col:
-        if show_icons:
-            st.page_link(
-                "pages/1_🗺️_Forsinkelseskart.py",
-                label="Kart",
-                icon="🗺️",
-                use_container_width=True,
-            )
-        else:
-            st.page_link(
-                "pages/1_🗺️_Forsinkelseskart.py",
-                label="Kart",
-                use_container_width=True,
-            )
-    with download_col:
-        if show_icons:
-            st.page_link(
-                "pages/2_📥_Last_ned_data.py",
-                label="Last ned",
-                icon="📥",
-                use_container_width=True,
-            )
-        else:
-            st.page_link(
-                "pages/2_📥_Last_ned_data.py",
-                label="Last ned",
+                path,
+                label=label,
+                icon=icon if show_icons else None,
                 use_container_width=True,
             )
 

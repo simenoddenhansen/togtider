@@ -69,7 +69,7 @@ st.set_page_config(
 inject_responsive_css()
 render_top_nav("Last ned")
 
-st.title("📥 Last ned data")
+st.title("Last ned data")
 st.markdown(
     "Tilpass eksporten av togforsinkelsesdata. Velg kolonner, "
     "tidsperiode, ruter og filformat før nedlasting."
@@ -136,7 +136,7 @@ with col_left:
 
 # ── Tidsperiode ──
 with col_right:
-    st.subheader("📅 Tidsperiode")
+    st.subheader("Tidsperiode")
 
     # Hurtigvalg for tidshorisont
     time_horizon = st.radio(
@@ -190,7 +190,7 @@ with col_right:
             and date_start < loaded_earliest_date
         ):
             st.caption(
-                "ℹ️ Perioden går lenger tilbake enn det som er forhåndslastet "
+                "Perioden går lenger tilbake enn det som er forhåndslastet "
                 "— manglende dager leses fra disk/arkiv ved nedlasting."
             )
     else:
@@ -222,7 +222,7 @@ with col_routes:
 
 # ── Filformat ──
 with col_format:
-    st.subheader("💾 Filformat")
+    st.subheader("Filformat")
     file_format = st.radio(
         "Velg eksportformat",
         options=["CSV", "Excel (.xlsx)", "JSON"],
@@ -271,7 +271,7 @@ if selected_routes and "lineName" in df_export.columns:
 # ─── Forhåndsvisningstabell (30 rader, alle kolonner, visuell markering) ──
 
 st.markdown("---")
-st.subheader("👀 Forhåndsvisning av data")
+st.subheader("Forhåndsvisning av data")
 
 if df_export.empty:
     st.warning("Ingen data matcher filtervalgene dine. Juster filtrene og prøv igjen.")
@@ -316,7 +316,7 @@ else:
         cols_in = len(selected_columns)
         cols_out = len(all_columns) - cols_in
         st.info(
-            f"📦 **Nedlastingen vil inneholde:** {n_total:,} rader × "
+            f"**Nedlastingen vil inneholde:** {n_total:,} rader × "
             f"{cols_in} kolonner".replace(",", " ")
             + (f" (ekskluderer {cols_out} kolonner)" if cols_out > 0 else "")
         )
@@ -364,7 +364,7 @@ if not df_export.empty and selected_columns:
 
     if data_bytes is not None:
         st.download_button(
-            label=f"📥 Last ned {file_format} ({len(df_download):,} rader)".replace(",", " "),
+            label=f"Last ned {file_format} ({len(df_download):,} rader)".replace(",", " "),
             data=data_bytes,
             file_name=file_name,
             mime=mime_type,

@@ -38,7 +38,7 @@ DASHBOARD_COLUMNS = (
     "lineName", "transportMode", "stationName",
 )
 
-# Standardkolonner for kartsiden (Forsinkelseskart.py).
+# Standardkolonner for kartsiden / landingssiden (Togforsinkelser.py).
 MAP_COLUMNS = (
     "scheduledDeparture", "delaySeconds", "isDelayed",
     "lineName", "lineCode", "transportMode",
@@ -315,7 +315,7 @@ def load_delay_range(start_date, end_date):
 
     if missing_remote:
         st.caption(
-            f"ℹ️ {len(missing_remote)} dag(er) i intervallet finnes verken lokalt "
+            f"{len(missing_remote)} dag(er) i intervallet finnes verken lokalt "
             "eller i arkivet og ble hoppet over."
         )
 

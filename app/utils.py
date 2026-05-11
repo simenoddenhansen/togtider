@@ -77,20 +77,39 @@ def fetch_route_geometry(line_id):
 
 # ─── Farge- og karthjelp ─────────────────────────────────────────
 
-def delay_to_color(delay_sec, max_delay_val):
-    """Konverterer forsinkelse i sekunder til [R, G, B, A] (grønn → gul → rød)."""
-    if max_delay_val <= 0:
-        return [44, 200, 50, 200]
-    ratio = min(max(delay_sec / max_delay_val, 0.0), 1.0)
-    if ratio < 0.5:
-        r = int(255 * (ratio * 2))
-        g = 200
-        b = 50
-    else:
-        r = 255
-        g = int(200 * (1 - (ratio - 0.5) * 2))
-        b = 50
-    return [r, g, b, 200]
+# Absolutte grenser (i sekunder) for fargekoding av snittforsinkelse per
+# stasjon på kartet. Disse er faste — uavhengig av valgt tidsperiode.
+MAP_DELAY_GREEN_MAX_SEC = 120    # under 2 min      → grønn
+MAP_DELAY_YELLOW_MAX_SEC = 300   # 2–5 min          → gul
+                                 # 5 min eller mer  → rød
+
+# RGBA-farger som matcher diagrammenes grønn/gul/rød (#2ecc71/#f1c40f/#e74c3c).
+_MAP_COLOR_GREEN = [46, 204, 113, 200]
+_MAP_COLOR_YELLOW = [241, 196, 15, 200]
+_MAP_COLOR_RED = [231, 76, 60, 200]
+
+# Forklaringstekst til kartets fargekode (brukes flere steder).
+MAP_DELAY_LEGEND = (
+    "🟢 Grønn = liten forsinkelse (under 2 min) · "
+    "🟡 Gul = moderat (2–5 min) · "
+    "🔴 Rød = stor forsinkelse (5 min eller mer)"
+)
+
+
+def delay_to_color(delay_sec):
+    """Fargekode [R, G, B, A] for snittforsinkelse, med absolutte grenser.
+
+    Grønn < 2 min · Gul 2–5 min · Rød ≥ 5 min.
+    """
+    try:
+        sec = float(delay_sec)
+    except (TypeError, ValueError):
+        sec = 0.0
+    if sec < MAP_DELAY_GREEN_MAX_SEC:
+        return list(_MAP_COLOR_GREEN)
+    if sec < MAP_DELAY_YELLOW_MAX_SEC:
+        return list(_MAP_COLOR_YELLOW)
+    return list(_MAP_COLOR_RED)
 
 
 def compute_zoom(lat_spread, lng_spread):
