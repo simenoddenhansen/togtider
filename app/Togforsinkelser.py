@@ -292,6 +292,7 @@ if not df.empty and "scheduledDeparture" in df.columns:
     )
     fig_daily.update_layout(
         hovermode="x unified",
+        dragmode=False,
         margin=dict(l=0, r=0, t=10, b=0),
         height=350,
         yaxis_title="Forsinkelsesminutter",
@@ -420,6 +421,7 @@ if not df.empty and "scheduledDeparture" in df.columns:
         aspect="auto",
     )
     fig_heat.update_layout(
+        dragmode=False,
         margin=dict(l=0, r=0, t=10, b=0),
         height=300,
         coloraxis_colorbar=dict(
@@ -503,6 +505,7 @@ if not df_lines.empty and "lineName" in df_lines.columns:
         },
     )
     fig_lines.update_layout(
+        dragmode=False,
         margin=dict(l=0, r=0, t=10, b=0),
         height=400,
         coloraxis_showscale=False,

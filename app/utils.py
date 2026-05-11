@@ -137,9 +137,16 @@ COLUMN_LABELS = {
 # ─── Plotly-hjelpere ─────────────────────────────────────────────
 
 PLOTLY_TEMPLATE = "plotly_dark"
+# Hover (tooltips) er på, men brukeren kan ikke endre visningen:
+# ingen verktøylinje, ingen zoom/pan/dobbeltklikk. Husk dragmode=False
+# i layout på hver figur for å låse dra-zoom i selve plottet.
 PLOTLY_STATIC_CONFIG = {
     "displayModeBar": False,
-    "staticPlot": True,
+    "staticPlot": False,
+    "scrollZoom": False,
+    "doubleClick": False,
+    "showAxisDragHandles": False,
+    "showAxisRangeEntryBoxes": False,
     "responsive": True,
 }
 
