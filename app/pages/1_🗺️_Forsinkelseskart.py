@@ -58,6 +58,74 @@ def _rgba_to_hex(color):
     return "#{:02x}{:02x}{:02x}".format(*color[:3])
 
 
+# Minste antall avganger for at en linje skal kunne bli «verstinglinje»
+# på en stasjon – hindrer at en linje med svært få avganger dominerer.
+_MIN_DEPARTURES_FOR_WORST_LINE = 5
+
+
+def _format_min_sec(seconds):
+    """Formatterer et sekundtall som «Xmin Y sek»."""
+    total = max(0, int(round(float(seconds or 0))))
+    minutes, secs = divmod(total, 60)
+    return f"{minutes}min {secs} sek"
+
+
+def compute_worst_line_per_station(df):
+    """Per stasjon: linjen med høyest andel forsinkede avganger.
+
+    Returnerer {stationId: {"lineName": str, "share": float, "avgSec": float}}.
+    """
+    if df.empty or "lineName" not in df.columns or "stationId" not in df.columns:
+        return {}
+
+    work = df.copy()
+    work["lineName"] = work["lineName"].astype("object").fillna("").astype(str).str.strip()
+    work = work[work["lineName"] != ""]
+    if work.empty:
+        return {}
+
+    if "isDelayed" in work.columns:
+        work["_delayed"] = pd.to_numeric(work["isDelayed"], errors="coerce").fillna(0)
+    elif "delaySeconds" in work.columns:
+        work["_delayed"] = (
+            pd.to_numeric(work["delaySeconds"], errors="coerce").fillna(0) > 0
+        ).astype(int)
+    else:
+        return {}
+
+    if "delaySeconds" in work.columns:
+        work["_delaySec"] = pd.to_numeric(work["delaySeconds"], errors="coerce").fillna(0)
+    else:
+        work["_delaySec"] = 0.0
+
+    grouped = (
+        work.groupby(["stationId", "lineName"], observed=True)
+        .agg(n=("_delayed", "size"), share=("_delayed", "mean"), avgSec=("_delaySec", "mean"))
+        .reset_index()
+    )
+
+    result = {}
+    for station_id, sub in grouped.groupby("stationId", observed=True):
+        candidates = sub[sub["n"] >= _MIN_DEPARTURES_FOR_WORST_LINE]
+        if candidates.empty:
+            candidates = sub
+        top = candidates.sort_values(["share", "avgSec"], ascending=False).iloc[0]
+        result[station_id] = {
+            "lineName": str(top["lineName"]),
+            "share": float(top["share"]),
+            "avgSec": float(top["avgSec"]),
+        }
+    return result
+
+
+def _worst_line_html(info):
+    """HTML-fragment for verstinglinjen (tom streng hvis ingen)."""
+    if not info or not info.get("lineName"):
+        return ""
+    label = f"{info['lineName']} (snittforsinkelse {_format_min_sec(info.get('avgSec'))})"
+    return f"<br>Linje med høyest andel forsinkelser: {label}"
+
+
 def render_station_delay_map(df_map, center_lat, center_lng, zoom):
     """Rendrer kartet med Folium når tilgjengelig, ellers pydeck."""
     if _HAS_FOLIUM:
@@ -75,6 +143,7 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
                 f"<strong>{row.name}</strong><br>"
                 f"Snitt forsinkelse: <strong>{row.delayMin} min</strong><br>"
                 f"Avganger: {row.count}"
+                f"{getattr(row, 'worstLineHtml', '')}"
             )
             folium.CircleMarker(
                 location=[row.latitude, row.longitude],
@@ -85,7 +154,7 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
                 fill_opacity=0.82,
                 weight=2,
                 tooltip=str(row.name),
-                popup=folium.Popup(popup_html, max_width=280),
+                popup=folium.Popup(popup_html, max_width=340),
             ).add_to(delay_map)
 
         st_folium(
@@ -120,6 +189,7 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
                 "<b>{name}</b><br/>"
                 "Snitt forsinkelse: <b>{delayMin} min</b><br/>"
                 "Avganger: {count}"
+                "{worstLineHtml}"
             ),
             "style": {
                 "backgroundColor": "#1a1a2e",
@@ -174,6 +244,11 @@ def render_map_section(df, df_stations):
         lambda d: delay_to_color(d, max_delay_val)
     )
     df_map["delayMin"] = (df_map["avgDelay"] / 60).round(1)
+
+    worst_lines = compute_worst_line_per_station(df)
+    df_map["worstLineHtml"] = df_map["stationId"].map(
+        lambda sid: _worst_line_html(worst_lines.get(sid))
+    )
 
     center_lat = df_map["latitude"].mean()
     center_lng = df_map["longitude"].mean()
