@@ -16,8 +16,16 @@ def inject_responsive_css():
    Responsiv CSS for Togforsinkelser-appen
    ══════════════════════════════════════════════════════════ */
 
-/* Skjul Streamlits venstremeny helt. Appen bruker egen toppnav. */
+/* Skjul Streamlits venstremeny / auto-sidenavigasjon helt — appen bruker egen
+   toppnav. Den primære avskruingen skjer i .streamlit/config.toml
+   (client.showSidebarNavigation = false); dette er en ekstra sikring i tilfelle
+   navigasjonen eller «åpne sidemeny»-pilen likevel dukker opp. Flere
+   data-testid-er listes fordi navnene varierer mellom Streamlit-versjoner. */
 [data-testid="stSidebar"],
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"],
 [data-testid="collapsedControl"] {
     display: none !important;
 }
