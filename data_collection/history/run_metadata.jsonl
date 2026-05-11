@@ -2122,3 +2122,7 @@
 {"scrapedAt": "2026-05-11T11:01:37.909277+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2437, "completenessRatio": 1.0}
 {"scrapedAt": "2026-05-11T11:11:09.123781+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2515, "completenessRatio": 1.0}
 {"scrapedAt": "2026-05-11T11:21:18.212130+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2522, "completenessRatio": 1.0}
+{"scrapedAt": "2026-05-11T11:41:15.467534+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2791, "completenessRatio": 1.0}
+{"scrapedAt": "2026-05-11T11:51:13.597775+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2557, "completenessRatio": 1.0}
+{"scrapedAt": "2026-05-11T12:01:39.579347+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2567, "completenessRatio": 1.0}
+{"scrapedAt": "2026-05-11T12:11:11.416378+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2568, "completenessRatio": 1.0}
