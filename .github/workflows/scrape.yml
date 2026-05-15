@@ -1,4 +1,7 @@
-name: Entur Scraper (hvert 10. minutt)
+name: Entur Scraper (publiserer ca. hver time)
+
+env:
+  PUBLISH_INTERVAL_MINUTES: 60
 
 # Hindrer at to kjoringer kolliderer (f.eks. cron-job.org + GitHub schedule samtidig)
 concurrency:
@@ -44,7 +47,27 @@ jobs:
       - name: Kjør landsdekkende forsinkelsesscraper
         run: python data_collection/forsinkelser_scraper.py --modes rail
 
+      - name: Sjekk om data skal publiseres
+        id: publish_gate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          interval_seconds=$((PUBLISH_INTERVAL_MINUTES * 60))
+          last_auto_commit_ts="$(git log -1 --format=%ct --grep='^Automatisk oppdatering av togtider$' || true)"
+          now_ts="$(date +%s)"
+
+          if [ -n "$last_auto_commit_ts" ] && [ $((now_ts - last_auto_commit_ts)) -lt "$interval_seconds" ]; then
+            minutes_since=$(((now_ts - last_auto_commit_ts) / 60))
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Siste publisering var for ${minutes_since} minutter siden. Hopper over push."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publiserer ny dataoppdatering."
+          fi
+
       - name: Lagre endringer til repo (Commit & Push)
+        if: steps.publish_gate.outputs.publish == 'true'
         run: |
           git config --global user.name "GitHub Action Bot"
           git config --global user.email "actions@github.com"
@@ -54,6 +77,7 @@ jobs:
           git push
 
       - name: Arkiver historikk eldre enn 30 dager
+        if: steps.publish_gate.outputs.publish == 'true'
         env:
           RETENTION_DAYS: 30
         run: |
