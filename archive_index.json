@@ -1,6 +1,8 @@
 {
-  "days": [],
-  "earliest": null,
-  "latest": null,
-  "count": 0
+  "days": [
+    "2026-04-19"
+  ],
+  "earliest": "2026-04-19",
+  "latest": "2026-04-19",
+  "count": 1
 }
