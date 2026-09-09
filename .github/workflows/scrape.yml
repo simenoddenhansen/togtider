@@ -15,7 +15,7 @@ on:
     # Primaertriggeren (cron-job.org) kjoerer hvert 10. minutt via workflow_dispatch.
     # GitHub Actions scheduler er best-effort og kan forsinke/droppe kjoringer,
     # saa denne fungerer kun som ekstra forsikring.
-    - cron: "0 */2 * * *"
+    - cron: "0 */1 * * *"
 
 jobs:
   scrape:
