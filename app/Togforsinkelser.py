@@ -128,7 +128,7 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
         delay_map = folium.Map(
             location=[center_lat, center_lng],
             zoom_start=zoom,
-            tiles="CartoDB dark_matter",
+            tiles="OpenStreetMap",
             control_scale=True,
             prefer_canvas=True,
         )
@@ -195,7 +195,7 @@ def render_station_delay_map(df_map, center_lat, center_lng, zoom):
                 "borderRadius": "6px",
             },
         },
-        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        map_style=None,
     )
 
     st.pydeck_chart(deck, use_container_width=True)
@@ -267,8 +267,8 @@ inject_responsive_css()
 render_top_nav("Kart", show_icons=False, show_brand_emoji=False)
 
 st.warning(
-    "Dataene er upålitelige for perioden 17.07.2026 til d.d. "
-    "Vi jobber med å rette dette slik at tidene blir oppdaterte."
+    "Datagrunnlaget for forsinkelser er svakere fra 17.07.2026, "
+    "og dataene er ikke helt korrekte etter denne datoen."
 )
 st.title("Togforsinkelser i Norge")
 st.caption("Interaktivt kart over forsinkelser på norske togstasjoner.")
