@@ -266,6 +266,10 @@ st.set_page_config(
 inject_responsive_css()
 render_top_nav("Kart", show_icons=False, show_brand_emoji=False)
 
+st.warning(
+    "Dataene er upålitelige for perioden 17.07.2026 til d.d. "
+    "Vi jobber med å rette dette slik at tidene blir oppdaterte."
+)
 st.title("Togforsinkelser i Norge")
 st.caption("Interaktivt kart over forsinkelser på norske togstasjoner.")
 st.caption(MAP_DELAY_LEGEND)

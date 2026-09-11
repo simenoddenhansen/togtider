@@ -69,6 +69,27 @@ st.set_page_config(
 inject_responsive_css()
 render_top_nav("Oversikt")
 
+st.markdown(
+    """
+    <div style="
+        margin: 0.75rem 0 1.25rem 0;
+        padding: 0.9rem 1rem;
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        border-left: 4px solid #f59e0b;
+        border-radius: 8px;
+        background: rgba(245, 158, 11, 0.12);
+        color: inherit;
+        font-size: 0.95rem;
+        line-height: 1.45;
+    ">
+        <strong>Datavarsel:</strong>
+        Dataene er upålitelige for perioden 17.07.2026 til d.d.
+        Vi jobber med å rette dette slik at tidene blir oppdaterte.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Auto-refresh hvert minutt for nedtelling / ferske data
 if _HAS_AUTOREFRESH:
     st_autorefresh(interval=60_000, key="countdown-refresh")
