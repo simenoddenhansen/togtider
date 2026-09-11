@@ -284,6 +284,18 @@ st.caption(
     "Entur påtar seg intet ansvar for konsekvenser av feil i data eller API-systemene."
 )
 
+with st.expander("📖 Brukstilfelle: Tidsserieanalyse av togforsinkelser (Prosjekt)", expanded=False):
+    st.markdown("""
+    **Bakgrunn**
+    Dette datasettet og dashbordet ble opprinnelig samlet inn og bygget i forbindelse med et akademisk prosjekt i kurset *Analysis of Time Series* ved Uppsala universitet (Våren 2026). Det norske jernbanenettet håndterer titalls millioner passasjerer årlig, og forsinkelser koster både samfunnet og enkeltpersoner verdifull tid. Målet med prosjektet var å undersøke om gjennomsnittlige togforsinkelser kan beskrives og predikeres ved hjelp av statistiske tidsseriemodeller.
+
+    **Hva vi gjorde i prosjektet**
+    - **Datainnsamling og rydding:** Sanntidsdata ble samlet inn fra Enturs API over tre uker (april–mai 2026). Dataene ble filtrert til kun å gjelde tog og ble deretter aggregert til **gjennomsnittlig forsinkelse per time** for å danne en regulær tidsserie. Ekstreme uteliggere og feildata (som negative forsinkelser) ble fjernet.
+    - **Utforskende analyse:** Vi fant tydelige døgnmønstre med topper rundt kl. 03:00 på natten og mellom kl. 15:00 og 17:00 i ettermiddagsrushet.
+    - **Modellering (SARIMA):** Ved hjelp av stasjonaritetstester (Augmented Dickey-Fuller) og analyse av autokorrelasjon (ACF/PACF) kom vi frem til at en sesongbasert ARIMA-modell — **ARIMA(1, 0, 1) × (1, 0, 1)₂₄** — ga best resultat. Denne modellen fanger opp både at en forsinket time ofte fører til at også den neste timen blir forsinket, samt det repeterende mønsteret hver 24. time.
+    - **Resultater og konklusjon:** Vi testet modellens evne til å forutsi de siste 24 timene i datasettet. Resultatene viste at en sesongbasert SARIMA-modell er et robust verktøy for å beskrive de rytmiske mønstrene i forsinkelsene i jernbanenettet. Ekstreme, akutte forsinkelser grunnet uforutsette hendelser og infrastrukturproblemer var imidlertid vanskeligere å fange opp for en rent historikkbasert modell.
+    """)
+
 # ─── Last data ────────────────────────────────────────────────────
 
 MASTER_PATH = master_csv_path()
