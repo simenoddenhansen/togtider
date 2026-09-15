@@ -20,6 +20,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from data_loader import (
     DEFAULT_RECENT_DAYS_DOWNLOAD,
+    DOWNLOAD_ROW_LIMITS,
+    MAX_DOWNLOAD_FRAME_BYTES,
+    MAX_DOWNLOAD_OUTPUT_BYTES,
+    MAX_DOWNLOAD_RANGE_DAYS,
     OSLO_TZ,
     load_delay_data,
     load_delay_range,
@@ -29,6 +33,7 @@ from data_loader import (
     get_unique_routes,
     earliest_available_date,
     archive_base_url,
+    validate_download_range,
 )
 from components.footer import entur_footer
 from components.responsive_css import inject_responsive_css
@@ -111,6 +116,7 @@ df_master = df_local  # vil byttes ut hvis brukeren ber om data utenfor lastet v
 st.markdown("---")
 
 col_left, col_right = st.columns(2)
+date_range_error = None
 
 # ── Kolonnevalg ──
 with col_left:
@@ -141,8 +147,8 @@ with col_right:
     # Hurtigvalg for tidshorisont
     time_horizon = st.radio(
         "Velg tidshorisont",
-        options=["Siste 24 timer", "Siste 7 dager", "Siste 30 dager", "Egendefinert periode", "Alle data"],
-        index=2,
+        options=["Siste 24 timer", "Siste 7 dager", "Egendefinert periode"],
+        index=1,
         key="download_time_horizon",
     )
 
@@ -159,14 +165,14 @@ with col_right:
             date_start = (now_oslo - timedelta(days=7)).date()
             date_end = now_oslo.date()
             st.caption(f"📆 {date_start} → {date_end}")
-        elif time_horizon == "Siste 30 dager":
-            date_start = (now_oslo - timedelta(days=30)).date()
-            date_end = now_oslo.date()
-            st.caption(f"📆 {date_start} → {date_end}")
-        elif time_horizon == "Egendefinert periode":
+        else:
+            default_start = max(
+                min_date_value,
+                max_date_value - timedelta(days=MAX_DOWNLOAD_RANGE_DAYS),
+            )
             date_start = st.date_input(
                 "Fra dato",
-                value=min_date_value,
+                value=default_start,
                 min_value=min_date_value,
                 max_value=max_date_value,
                 key="download_date_start",
@@ -178,15 +184,16 @@ with col_right:
                 max_value=max_date_value,
                 key="download_date_end",
             )
-            if date_start > date_end:
-                st.error("❌ Startdato kan ikke være etter sluttdato.")
-        else:  # Alle data
-            date_start = min_date_value
-            date_end = max_date_value
-            st.caption(f"📆 Hele perioden: {date_start} → {date_end}")
+
+        try:
+            date_start, date_end = validate_download_range(date_start, date_end)
+        except (TypeError, ValueError) as exc:
+            date_range_error = str(exc)
+            st.error(date_range_error)
 
         if (
             loaded_earliest_date
+            and date_range_error is None
             and date_start < loaded_earliest_date
         ):
             st.caption(
@@ -234,12 +241,15 @@ with col_format:
 # ─── Bygg eksport-DataFrame ──────────────────────────────────────
 
 needs_extended_load = (
-    date_start is not None
+    date_range_error is None
+    and date_start is not None
     and loaded_earliest_date is not None
     and date_start < loaded_earliest_date
 )
 
-if needs_extended_load:
+if date_range_error is not None:
+    df_export = df_master.iloc[0:0]
+elif needs_extended_load:
     spinner_msg = (
         "Henter arkiverte dager fra fjernlageret …"
         if archive_available
@@ -248,7 +258,7 @@ if needs_extended_load:
     with st.spinner(spinner_msg):
         df_export = filter_rail_only(load_delay_range(date_start, date_end))
 else:
-    df_export = df_master.copy()
+    df_export = df_master
 
 # Filtrer på tidsperiode
 if (
@@ -273,7 +283,9 @@ if selected_routes and "lineName" in df_export.columns:
 st.markdown("---")
 st.subheader("Forhåndsvisning av data")
 
-if df_export.empty:
+if date_range_error is not None:
+    st.info("Velg en kortere tidsperiode for å se og laste ned data.")
+elif df_export.empty:
     st.warning("Ingen data matcher filtervalgene dine. Juster filtrene og prøv igjen.")
 else:
     # Vis de siste 30 datapunktene med ALLE kolonner synlige
@@ -326,41 +338,66 @@ else:
 
 st.markdown("---")
 
-if not df_export.empty and selected_columns:
+if date_range_error is None and not df_export.empty and selected_columns:
     # Filtrer til kun valgte kolonner for selve eksporten
     valid_cols = [c for c in selected_columns if c in df_export.columns]
     df_download = df_export[valid_cols]
 
-    now_str = now_oslo.strftime("%Y%m%d_%H%M")
+    row_limit = DOWNLOAD_ROW_LIMITS[file_format]
+    frame_bytes = int(df_download.memory_usage(index=True, deep=True).sum())
+    data_bytes = None
+    file_name = None
+    mime_type = None
 
-    if file_format == "CSV":
-        data_bytes = df_download.to_csv(index=False).encode("utf-8")
-        file_name = f"togforsinkelser_{now_str}.csv"
-        mime_type = "text/csv"
-
-    elif file_format == "Excel (.xlsx)":
-        buffer = io.BytesIO()
+    if len(df_download) > row_limit:
+        st.warning(
+            f"Eksporten er begrenset til {row_limit:,} rader for {file_format}. "
+            "Velg færre ruter eller en kortere periode.".replace(",", " ")
+        )
+    elif frame_bytes > MAX_DOWNLOAD_FRAME_BYTES:
+        st.warning(
+            "Datamengden er for stor til å eksporteres trygt. "
+            "Velg færre kolonner, ruter eller dager."
+        )
+    else:
+        now_str = now_oslo.strftime("%Y%m%d_%H%M")
         try:
-            df_download.to_excel(buffer, index=False, engine="openpyxl")
-            data_bytes = buffer.getvalue()
-            file_name = f"togforsinkelser_{now_str}.xlsx"
-            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            if file_format == "CSV":
+                data_bytes = df_download.to_csv(index=False).encode("utf-8")
+                file_name = f"togforsinkelser_{now_str}.csv"
+                mime_type = "text/csv"
+
+            elif file_format == "Excel (.xlsx)":
+                buffer = io.BytesIO()
+                df_download.to_excel(buffer, index=False, engine="openpyxl")
+                data_bytes = buffer.getvalue()
+                file_name = f"togforsinkelser_{now_str}.xlsx"
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+            elif file_format == "JSON":
+                df_json = df_download.copy()
+                for col in df_json.select_dtypes(include=["datetimetz", "datetime64"]).columns:
+                    df_json[col] = df_json[col].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+                data_bytes = df_json.to_json(
+                    orient="records", force_ascii=False, indent=2
+                ).encode("utf-8")
+                file_name = f"togforsinkelser_{now_str}.json"
+                mime_type = "application/json"
         except ImportError:
             st.error(
                 "❌ Excel-eksport krever `openpyxl`-pakken. "
                 "Installer med: `pip install openpyxl`"
             )
+        except (MemoryError, OverflowError):
+            st.error("Eksporten ble avbrutt fordi den krevde for mye minne.")
             data_bytes = None
-            file_name = None
-            mime_type = None
 
-    elif file_format == "JSON":
-        df_json = df_download.copy()
-        for col in df_json.select_dtypes(include=["datetimetz", "datetime64"]).columns:
-            df_json[col] = df_json[col].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
-        data_bytes = df_json.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
-        file_name = f"togforsinkelser_{now_str}.json"
-        mime_type = "application/json"
+    if data_bytes is not None and len(data_bytes) > MAX_DOWNLOAD_OUTPUT_BYTES:
+        st.warning(
+            "Den ferdige filen ble for stor til å tilbys trygt. "
+            "Velg færre kolonner, ruter eller dager."
+        )
+        data_bytes = None
 
     if data_bytes is not None:
         st.download_button(
@@ -371,7 +408,9 @@ if not df_export.empty and selected_columns:
             type="primary",
         )
 else:
-    if not selected_columns:
+    if date_range_error is not None:
+        pass
+    elif not selected_columns:
         st.warning("Velg minst én kolonne for å aktivere nedlasting.")
     else:
         st.warning("Ingen data å laste ned med gjeldende filtre.")

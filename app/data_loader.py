@@ -24,7 +24,21 @@ LEGACY_MASTER_FILENAME = "forsinkelser_master.csv"
 ARCHIVE_BASE_URL_ENV = "TOGTIDER_ARCHIVE_BASE_URL"
 ARCHIVE_INDEX_FILENAME = "archive_index.json"
 ARCHIVE_FETCH_TIMEOUT = 15
+ARCHIVE_INDEX_MAX_BYTES = 512 * 1024
+ARCHIVE_DAY_MAX_BYTES = 16 * 1024 * 1024
+ARCHIVE_INDEX_MAX_DAYS = 10_000
 DELAY_DATA_NORMALIZATION_VERSION = 3
+
+# Grenser for brukerinitierte nedlastinger. Intervallgrensen ma handheves i
+# datalaget ogsa, slik at en fremtidig UI-endring ikke kan omga den.
+MAX_DOWNLOAD_RANGE_DAYS = 7
+DOWNLOAD_ROW_LIMITS = {
+    "CSV": 100_000,
+    "Excel (.xlsx)": 50_000,
+    "JSON": 50_000,
+}
+MAX_DOWNLOAD_FRAME_BYTES = 64 * 1024 * 1024
+MAX_DOWNLOAD_OUTPUT_BYTES = 64 * 1024 * 1024
 
 # Lavkardinalitet-kolonner som komprimeres kraftig som category-dtype.
 _CATEGORICAL_COLUMNS = frozenset({
@@ -53,7 +67,7 @@ MAP_COLUMNS = (
 # hentes fra arkivet ved behov via load_delay_range / fetch_archived_day.
 DEFAULT_RECENT_DAYS_DASHBOARD = 60   # 30-dagers KPI sammenligner mot forrige 30-dagers periode
 DEFAULT_RECENT_DAYS_MAP = 30
-DEFAULT_RECENT_DAYS_DOWNLOAD = 30
+DEFAULT_RECENT_DAYS_DOWNLOAD = MAX_DOWNLOAD_RANGE_DAYS
 
 
 def project_root():
@@ -164,20 +178,61 @@ def _archive_url(*parts):
     return "/".join([base, *parts])
 
 
-def _http_get_bytes(url):
-    """Henter rå bytes fra en URL. Returnerer None ved 404 eller nettverksfeil."""
+def _http_get_bytes(url, max_bytes):
+    """Henter en begrenset respons. Returnerer None ved feil eller for stor fil."""
+    if max_bytes <= 0:
+        raise ValueError("max_bytes ma vaere positiv")
+
     try:
         request = Request(url, headers={"User-Agent": "togtider-app"})
         with urlopen(request, timeout=ARCHIVE_FETCH_TIMEOUT) as response:
-            return response.read()
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None:
+                try:
+                    if int(content_length) > max_bytes:
+                        st.warning("Arkivresponsen var for stor og ble avvist.")
+                        return None
+                except ValueError:
+                    pass
+
+            payload = response.read(max_bytes + 1)
+            if len(payload) > max_bytes:
+                st.warning("Arkivresponsen var for stor og ble avvist.")
+                return None
+            return payload
     except HTTPError as e:
         if e.code == 404:
             return None
-        st.warning(f"Kunne ikke hente {url}: HTTP {e.code}")
+        st.warning(f"Kunne ikke hente data fra arkivet: HTTP {e.code}")
         return None
     except URLError as e:
-        st.warning(f"Nettverksfeil mot arkivet ({url}): {e.reason}")
+        st.warning(f"Nettverksfeil mot arkivet: {e.reason}")
         return None
+
+
+def _is_archive_day_key(value):
+    """Returnerer True bare for kanoniske YYYY-MM-DD-datoer."""
+    if not isinstance(value, str) or len(value) != 10:
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _parse_archive_index(payload):
+    """Tolker og validerer en begrenset arkivindeks."""
+    index = json.loads(payload.decode("utf-8"))
+    if not isinstance(index, dict) or not isinstance(index.get("days"), list):
+        raise ValueError("arkivindeksen mangler en gyldig days-liste")
+
+    days = index["days"]
+    if len(days) > ARCHIVE_INDEX_MAX_DAYS:
+        raise ValueError("arkivindeksen inneholder for mange dager")
+    if any(not _is_archive_day_key(day_key) for day_key in days):
+        raise ValueError("arkivindeksen inneholder en ugyldig dato")
+
+    return {**index, "days": sorted(set(days))}
 
 
 @st.cache_data(ttl=300)
@@ -190,13 +245,13 @@ def load_archive_index():
     if url is None:
         return {}
 
-    payload = _http_get_bytes(url)
+    payload = _http_get_bytes(url, ARCHIVE_INDEX_MAX_BYTES)
     if payload is None:
         return {}
 
     try:
-        return json.loads(payload.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        return _parse_archive_index(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
         st.warning(f"Klarte ikke å tolke arkivindeks: {e}")
         return {}
 
@@ -207,11 +262,15 @@ def fetch_archived_day(day_key):
     Henter én arkivert daglig CSV (YYYY-MM-DD) over HTTPS og returnerer
     en normalisert DataFrame. Returnerer tom DataFrame hvis filen ikke finnes.
     """
+    if not _is_archive_day_key(day_key):
+        st.warning("Ugyldig dato for arkivfil.")
+        return pd.DataFrame()
+
     url = _archive_url(f"forsinkelser_{day_key}.csv")
     if url is None:
         return pd.DataFrame()
 
-    payload = _http_get_bytes(url)
+    payload = _http_get_bytes(url, ARCHIVE_DAY_MAX_BYTES)
     if payload is None:
         return pd.DataFrame()
 
@@ -234,7 +293,9 @@ def local_history_day_keys():
     keys = set()
     for name in os.listdir(history_dir):
         if name.startswith("forsinkelser_") and name.endswith(".csv"):
-            keys.add(name[len("forsinkelser_") : -len(".csv")])
+            day_key = name[len("forsinkelser_") : -len(".csv")]
+            if _is_archive_day_key(day_key):
+                keys.add(day_key)
     return keys
 
 
@@ -272,6 +333,23 @@ def _day_keys_in_range(start, end):
     return days
 
 
+def validate_download_range(start_date, end_date):
+    """Validerer og normaliserer et brukerinitiert nedlastingsintervall."""
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+    if isinstance(end_date, datetime):
+        end_date = end_date.date()
+    if not isinstance(start_date, date) or not isinstance(end_date, date):
+        raise TypeError("start_date og end_date må være datoer")
+    if start_date > end_date:
+        raise ValueError("Startdato kan ikke være etter sluttdato.")
+    if (end_date - start_date).days > MAX_DOWNLOAD_RANGE_DAYS:
+        raise ValueError(
+            f"Perioden kan ikke være lengre enn {MAX_DOWNLOAD_RANGE_DAYS} dager."
+        )
+    return start_date, end_date
+
+
 def load_delay_range(start_date, end_date):
     """
     Laster forsinkelsesdata for et datointervall ved å kombinere lokale filer
@@ -281,10 +359,7 @@ def load_delay_range(start_date, end_date):
     Parametere:
         start_date, end_date: date-objekter (inklusive begge ender).
     """
-    if isinstance(start_date, datetime):
-        start_date = start_date.date()
-    if isinstance(end_date, datetime):
-        end_date = end_date.date()
+    start_date, end_date = validate_download_range(start_date, end_date)
 
     needed = _day_keys_in_range(start_date, end_date)
     if not needed:
@@ -322,7 +397,7 @@ def load_delay_range(start_date, end_date):
     if not frames:
         return pd.DataFrame()
 
-    return pd.concat(frames, ignore_index=True)
+    return _apply_categorical_dtypes(pd.concat(frames, ignore_index=True))
 
 
 def _normalize_delay_data(df):
