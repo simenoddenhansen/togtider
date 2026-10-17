@@ -12817,3 +12817,4 @@
 {"scrapedAt": "2026-10-16T21:04:55.370974+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 5260, "completenessRatio": 1.0}
 {"scrapedAt": "2026-10-17T00:15:43.643353+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 3796, "completenessRatio": 1.0}
 {"scrapedAt": "2026-10-17T02:51:10.596945+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 2132, "completenessRatio": 1.0}
+{"scrapedAt": "2026-10-17T07:07:03.099698+02:00", "totalBatches": 23, "failedBatches": 0, "totalRows": 1757, "completenessRatio": 1.0}
