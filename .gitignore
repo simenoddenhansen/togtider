@@ -1,3 +1,6 @@
+# AI tool artifacts (Claude, Copilot worktrees, etc.)
+.claude/
+
 # Python virtual environments
 .venv/
 venv/
